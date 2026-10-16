@@ -27,3 +27,7 @@ ANTES DE DIVULGAR
 - Confirme regras, categorias, arbitragem, autorização de menores e segurança antes de abrir inscrições oficiais.
 
 O site usa HTML, CSS e um pequeno script JavaScript para o menu móvel e o ano do rodapé.
+
+ATUALIZAÇÃO DO FORMULÁRIO
+- Os botões principais de inscrição estão conectados ao formulário Tally: https://tally.so/r/YjDoYN
+- Envie novamente o index.html atualizado ao repositório para publicar esta alteração.
