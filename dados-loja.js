@@ -16,17 +16,17 @@ const DADOS_LOJA = {
 
   // 2. CANAIS DE CONTATO (Aba Contato + Checkout)
   // Importante: no campo whatsapp coloque 55 + DDD + número (apenas números)
-  whatsapp: "5571999999999",
-  whatsappExibicao: "(71) 99999-9999",
+  whatsapp: "5571991402776",
+  whatsappExibicao: "(71) 99140-2776",
   instagram: "@rpmmodas",
-  urlInstagram: "https://instagram.com/rpmmodas",
+  urlInstagram: "https://instagram.com/rpmmoda",
   cidadeEstado: "Enviamos para todo o Brasil • Consulte entrega rápida na região",
   horarioAtendimento: "Segunda a Sexta: 9h às 19h • Sábado: 9h às 15h",
 
   // 3. CONDIÇÕES COMERCIAIS E CUPONS
-  freteGratisAcimaDe: 299.0,
+  freteGratisAcimaDe: 399.0,
   descontoPixPercentual: 5,
-  parcelasSemJuros: 3,
+  parcelasSemJuros: 5,
 
   cupons: {
     RPM10: 10,
@@ -34,7 +34,7 @@ const DADOS_LOJA = {
   },
 
   avisosTopo: [
-    "✨ Frete Grátis nas compras acima de R$ 299",
+    "✨ Frete Grátis nas compras acima de R$ 399",
     "💚 5% OFF imediato no PIX",
     "🎁 Cupom RPM10 para 10% OFF na 1ª compra"
   ],
