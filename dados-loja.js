@@ -44,6 +44,8 @@ const DADOS_LOJA = {
   ],
 
   // 5. CATÁLOGO DE ROUPAS
+  // Dica: coloque as fotos direto junto com o index.html (sem precisar de pasta!)
+  // Ex: imagem: "vestido-novo.jpg"
   // - maisVendido: true -> aparece na seção "Mais Vendidas" da aba Início
   // - precoAntigo maior que preco -> aparece automaticamente na seção "Promoções" da aba Início!
   produtos: [
@@ -53,7 +55,7 @@ const DADOS_LOJA = {
       categoria: "Vestidos",
       preco: 289.90,
       precoAntigo: null,
-      imagem: "imagens/vestido-midi-linho.jpg",
+      imagem: "vestido-midi-linho.jpg",
       destaque: "Mais Vendido",
       maisVendido: true,
       tamanhos: ["PP", "P", "M", "G"],
@@ -68,7 +70,7 @@ const DADOS_LOJA = {
       categoria: "Conjuntos",
       preco: 369.90,
       precoAntigo: null,
-      imagem: "imagens/conjunto-alfaiataria.jpg",
+      imagem: "conjunto-alfaiataria.jpg",
       destaque: "Mais Vendido",
       maisVendido: true,
       tamanhos: ["P", "M", "G", "GG"],
@@ -83,7 +85,7 @@ const DADOS_LOJA = {
       categoria: "Alfaiataria",
       preco: 389.90,
       precoAntigo: null,
-      imagem: "imagens/macacao-linho-preto.jpg",
+      imagem: "macacao-linho-preto.jpg",
       destaque: "Mais Vendido",
       maisVendido: true,
       tamanhos: ["P", "M", "G", "GG"],
@@ -98,7 +100,7 @@ const DADOS_LOJA = {
       categoria: "Vestidos",
       preco: 349.90,
       precoAntigo: null,
-      imagem: "imagens/vestido-longo-seda.jpg",
+      imagem: "vestido-longo-seda.jpg",
       destaque: "Mais Vendido",
       maisVendido: true,
       tamanhos: ["PP", "P", "M", "G"],
@@ -113,7 +115,7 @@ const DADOS_LOJA = {
       categoria: "Blusas & Saias",
       preco: 149.90,
       precoAntigo: 189.90,
-      imagem: "imagens/blusa-tricot-modal.jpg",
+      imagem: "blusa-tricot-modal.jpg",
       destaque: "-21% OFF",
       maisVendido: false,
       tamanhos: ["P", "M", "G"],
@@ -128,7 +130,7 @@ const DADOS_LOJA = {
       categoria: "Conjuntos",
       preco: 299.90,
       precoAntigo: 359.90,
-      imagem: "imagens/conjunto-resort-areia.jpg",
+      imagem: "conjunto-resort-areia.jpg",
       destaque: "-17% OFF",
       maisVendido: false,
       tamanhos: ["PP", "P", "M", "G"],
@@ -143,7 +145,7 @@ const DADOS_LOJA = {
       categoria: "Alfaiataria",
       preco: 309.90,
       precoAntigo: 369.90,
-      imagem: "imagens/blazer-linho-cru.jpg",
+      imagem: "blazer-linho-cru.jpg",
       destaque: "-16% OFF",
       maisVendido: false,
       tamanhos: ["P", "M", "G", "GG"],
@@ -158,7 +160,7 @@ const DADOS_LOJA = {
       categoria: "Blusas & Saias",
       preco: 209.90,
       precoAntigo: 259.90,
-      imagem: "imagens/saia-midi-cetim.jpg",
+      imagem: "saia-midi-cetim.jpg",
       destaque: "-19% OFF",
       maisVendido: false,
       tamanhos: ["PP", "P", "M", "G"],
