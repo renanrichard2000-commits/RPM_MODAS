@@ -31,8 +31,7 @@
     categoriaAtiva: "Todas",
     tamanhoFiltro: "Todos",
     precoFiltro: "todos",
-    ordenacao: "destaques",
-    cupomAtivo: null
+    ordenacao: "destaques"
   };
 
   function formatarMoeda(valor) {
@@ -739,25 +738,18 @@
     const subtotal = estado.sacola.reduce((acc, item) => acc + item.preco * item.qtd, 0);
     const qtdTotal = estado.sacola.reduce((acc, item) => acc + item.qtd, 0);
 
-    const descontoCupom = estado.cupomAtivo
-      ? subtotal * (estado.cupomAtivo.percentual / 100)
-      : 0;
-
-    const baseAposCupom = Math.max(0, subtotal - descontoCupom);
-
     const selectPagamento = document.getElementById("cliente-pagamento");
     const pagandoPix = selectPagamento && selectPagamento.value === "PIX";
     const percPix = DADOS_LOJA.descontoPixPercentual || 0;
-    const descontoPix = pagandoPix ? baseAposCupom * (percPix / 100) : 0;
+    const descontoPix = pagandoPix ? subtotal * (percPix / 100) : 0;
 
-    const totalFinal = Math.max(0, baseAposCupom - descontoPix);
+    const totalFinal = Math.max(0, subtotal - descontoPix);
     const metaFrete = DADOS_LOJA.freteGratisAcimaDe || 0;
     const ganhouFreteGratis = metaFrete > 0 && subtotal >= metaFrete;
 
     return {
       subtotal,
       qtdTotal,
-      descontoCupom,
       descontoPix,
       pagandoPix,
       totalFinal,
@@ -853,19 +845,6 @@
 
     document.getElementById("resumo-subtotal").textContent = formatarMoeda(totais.subtotal);
 
-    const linhaCupom = document.getElementById("linha-desconto-cupom");
-    if (estado.cupomAtivo && totais.descontoCupom > 0) {
-      linhaCupom.classList.remove("hidden");
-      document.getElementById(
-        "label-desconto-cupom"
-      ).textContent = `Cupom (${estado.cupomAtivo.codigo})`;
-      document.getElementById("valor-desconto-cupom").textContent = `- ${formatarMoeda(
-        totais.descontoCupom
-      )}`;
-    } else {
-      linhaCupom.classList.add("hidden");
-    }
-
     const linhaPix = document.getElementById("linha-desconto-pix");
     if (totais.pagandoPix && totais.descontoPix > 0) {
       linhaPix.classList.remove("hidden");
@@ -881,40 +860,6 @@
       : "A calcular";
 
     document.getElementById("resumo-total").textContent = formatarMoeda(totais.totalFinal);
-  }
-
-  function aplicarCupomCodigo(codigoInformado) {
-    const codigo = String(codigoInformado || "")
-      .trim()
-      .toUpperCase();
-    const feedback = document.getElementById("feedback-cupom");
-    const input = document.getElementById("input-cupom");
-
-    if (!codigo) {
-      estado.cupomAtivo = null;
-      if (feedback) feedback.classList.add("hidden");
-      renderizarSacola();
-      return;
-    }
-
-    const tabelaCupons = DADOS_LOJA.cupons || {};
-    if (tabelaCupons[codigo]) {
-      estado.cupomAtivo = { codigo, percentual: tabelaCupons[codigo] };
-      if (input) input.value = codigo;
-      if (feedback) {
-        feedback.textContent = `✓ Cupom ${codigo} (${tabelaCupons[codigo]}% OFF) aplicado!`;
-        feedback.className = "coupon-feedback ok";
-      }
-      renderizarSacola();
-      mostrarToast(`🎁 Cupom ${codigo} ativado!`);
-    } else {
-      estado.cupomAtivo = null;
-      if (feedback) {
-        feedback.textContent = "Cupom inválido ou expirado.";
-        feedback.className = "coupon-feedback err";
-      }
-      renderizarSacola();
-    }
   }
 
   function finalizarPedidoWhatsApp() {
@@ -942,11 +887,6 @@
     );
 
     const linhasResumo = [`Subtotal: ${formatarMoeda(totais.subtotal)}`];
-    if (estado.cupomAtivo && totais.descontoCupom > 0) {
-      linhasResumo.push(
-        `Cupom (${estado.cupomAtivo.codigo}): -${formatarMoeda(totais.descontoCupom)}`
-      );
-    }
     if (totais.pagandoPix && totais.descontoPix > 0) {
       linhasResumo.push(
         `Desconto PIX (${DADOS_LOJA.descontoPixPercentual}%): -${formatarMoeda(totais.descontoPix)}`
@@ -1076,12 +1016,6 @@
       navegarParaAba("catalogo");
     });
 
-    document.getElementById("btn-ativar-cupom-home").addEventListener("click", () => {
-      const cod = document.getElementById("codigo-cupom-destaque").textContent.trim();
-      aplicarCupomCodigo(cod);
-      abrirSacola();
-    });
-
     // Pesquisa e filtros na aba Catálogo
     const inputCat = document.getElementById("input-pesquisa-catalogo");
     const btnLimparTexto = document.getElementById("btn-limpar-texto-busca");
@@ -1181,10 +1115,6 @@
     document.getElementById("btn-explorar-da-sacola").addEventListener("click", () => {
       fecharTodosModais();
       navegarParaAba("catalogo");
-    });
-
-    document.getElementById("btn-aplicar-cupom").addEventListener("click", () => {
-      aplicarCupomCodigo(document.getElementById("input-cupom").value);
     });
 
     document.getElementById("cliente-entrega").addEventListener("change", (e) => {

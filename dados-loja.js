@@ -23,20 +23,15 @@ const DADOS_LOJA = {
   cidadeEstado: "Enviamos para todo o Brasil • Consulte entrega rápida na região",
   horarioAtendimento: "Segunda a Sexta: 9h às 19h • Sábado: 9h às 15h",
 
-  // 3. CONDIÇÕES COMERCIAIS E CUPONS
+  // 3. CONDIÇÕES COMERCIAIS
   freteGratisAcimaDe: 299.0,
   descontoPixPercentual: 5,
   parcelasSemJuros: 3,
 
-  cupons: {
-    RPM10: 10,
-    BEMVINDA10: 10
-  },
-
   avisosTopo: [
     "✨ Frete Grátis nas compras acima de R$ 299",
     "💚 5% OFF imediato no PIX",
-    "🎁 Cupom RPM10 para 10% OFF na 1ª compra"
+    "📦 Enviamos para todo o Brasil"
   ],
 
   // 4. TABELA DE MEDIDAS PADRÃO
