@@ -1,11 +1,10 @@
 /**
- * LÓGICA DA LOJA ONLINE + SACOLA + PEDIDO NO WHATSAPP
- * Lê automaticamente todas as configurações do arquivo dados-loja.js
+ * LÓGICA DA LOJA RPM MODAS — 3 ABAS EM PÁGINA ÚNICA (INÍCIO, CATÁLOGO, CONTATO)
+ * + PESQUISA RÁPIDA + FILTROS + SACOLA E PEDIDO NO WHATSAPP
  */
 (function () {
   "use strict";
 
-  // Utilitário de armazenamento seguro (funciona mesmo em navegadores restritos)
   const storage = {
     get(key, fallback) {
       try {
@@ -19,24 +18,23 @@
       try {
         localStorage.setItem(key, JSON.stringify(value));
       } catch (_) {
-        // Ignora se bloqueado
+        // Ignora se restrito
       }
     }
   };
 
-  // Estado da aplicação
   const estado = {
-    sacola: storage.get("loja_sacola_v1", []),
-    favoritos: storage.get("loja_favoritos_v1", []),
+    abaAtual: "inicio",
+    sacola: storage.get("rpm_sacola_v1", []),
     selecaoTamanhoCard: {},
-    categoriaAtiva: "Todos",
-    apenasFavoritos: false,
     busca: "",
+    categoriaAtiva: "Todas",
+    tamanhoFiltro: "Todos",
+    precoFiltro: "todos",
     ordenacao: "destaques",
     cupomAtivo: null
   };
 
-  // Formatador de moeda Real Brasileiro (R$)
   function formatarMoeda(valor) {
     return valor.toLocaleString("pt-BR", {
       style: "currency",
@@ -53,7 +51,6 @@
     return `https://wa.me/${fone}?text=${encodeURIComponent(mensagem)}`;
   }
 
-  // Toast rápido de feedback
   let toastTimer = null;
   function mostrarToast(texto) {
     const el = document.getElementById("toast");
@@ -67,7 +64,45 @@
   }
 
   // ==========================================================================
-  // 1. INICIALIZAÇÃO DOS TEXTOS DA LOJA (dados-loja.js)
+  // 1. NAVEGAÇÃO ENTRE AS 3 ABAS (INÍCIO, CATÁLOGO, CONTATO)
+  // ==========================================================================
+  function navegarParaAba(nomeAba, rolarTopo = true) {
+    const abasValidas = ["inicio", "catalogo", "contato"];
+    const destino = abasValidas.includes(nomeAba) ? nomeAba : "inicio";
+    estado.abaAtual = destino;
+
+    abasValidas.forEach((aba) => {
+      const secao = document.getElementById(`aba-${aba}`);
+      if (secao) {
+        secao.classList.toggle("hidden", aba !== destino);
+      }
+    });
+
+    // Atualiza estado ativo nos botões do cabeçalho e menu mobile
+    document.querySelectorAll(".tab-nav-btn, .mobile-tab-btn").forEach((btn) => {
+      const alvo = btn.getAttribute("data-aba-link");
+      const ativo = alvo === destino;
+      btn.classList.toggle("active", ativo);
+      if (ativo) {
+        btn.setAttribute("aria-current", "page");
+      } else {
+        btn.removeAttribute("aria-current");
+      }
+    });
+
+    try {
+      window.history.replaceState(null, "", `#${destino}`);
+    } catch (_) {
+      // Ignora em ambientes sem histórico
+    }
+
+    if (rolarTopo) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+
+  // ==========================================================================
+  // 2. PREENCHIMENTO DOS DADOS DA MARCA (RPM MODAS)
   // ==========================================================================
   function preencherDadosDaLoja() {
     document.title = `${DADOS_LOJA.nomeLoja} | ${DADOS_LOJA.subtituloLogo}`;
@@ -77,33 +112,43 @@
       if (el && valor) el.textContent = valor;
     };
 
+    // Nome e subtítulo em todos os pontos
     setTexto("header-nome-loja", DADOS_LOJA.nomeLoja);
     setTexto("header-sub-loja", DADOS_LOJA.subtituloLogo);
     setTexto("mobile-nome-loja", DADOS_LOJA.nomeLoja);
+    setTexto("mobile-sub-loja", DADOS_LOJA.subtituloLogo);
     setTexto("footer-nome-loja", DADOS_LOJA.nomeLoja);
+    setTexto("footer-sub-loja", DADOS_LOJA.subtituloLogo);
     setTexto("copy-nome-loja", DADOS_LOJA.nomeLoja);
+    setTexto("copy-sub-loja", DADOS_LOJA.subtituloLogo);
+
+    // Hero da aba Início
     setTexto("hero-tag", DADOS_LOJA.tagColecao);
     setTexto("hero-titulo", DADOS_LOJA.sloganHero);
     setTexto("hero-descricao", DADOS_LOJA.descricaoHero);
-    setTexto("footer-cidade", DADOS_LOJA.cidadeEstado);
-    setTexto("footer-horario", DADOS_LOJA.horarioAtendimento);
+
+    // Aba Contato & Rodapé
+    setTexto("contato-numero-wa", DADOS_LOJA.whatsappExibicao);
+    setTexto("contato-arroba-insta", DADOS_LOJA.instagram);
+    setTexto("contato-horario", DADOS_LOJA.horarioAtendimento);
+    setTexto("contato-cidade", DADOS_LOJA.cidadeEstado);
     setTexto("footer-whatsapp", DADOS_LOJA.whatsappExibicao);
     setTexto("ano-atual", String(new Date().getFullYear()));
 
-    const linkInsta = document.getElementById("footer-instagram");
-    if (linkInsta) {
-      linkInsta.textContent = DADOS_LOJA.instagram;
-      linkInsta.href = DADOS_LOJA.urlInstagram || "https://instagram.com/";
+    const msgPadraoWa = `Olá! Vim pelo site da *${DADOS_LOJA.nomeLoja}* e gostaria de atendimento ✨`;
+    const linkCardWa = document.getElementById("link-card-whatsapp");
+    if (linkCardWa) linkCardWa.href = gerarLinkWhatsApp(msgPadraoWa);
+
+    const linkCardInsta = document.getElementById("link-card-instagram");
+    if (linkCardInsta) linkCardInsta.href = DADOS_LOJA.urlInstagram || "https://instagram.com/";
+
+    const footerInsta = document.getElementById("footer-instagram");
+    if (footerInsta) {
+      footerInsta.textContent = DADOS_LOJA.instagram;
+      footerInsta.href = DADOS_LOJA.urlInstagram || "https://instagram.com/";
     }
 
-    if (DADOS_LOJA.freteGratisAcimaDe > 0) {
-      setTexto(
-        "beneficio-frete-titulo",
-        `Frete Grátis acima de R$ ${DADOS_LOJA.freteGratisAcimaDe.toFixed(0)}`
-      );
-    }
-
-    // Barra superior de avisos
+    // Barra de avisos no topo
     const topbar = document.getElementById("topbar-avisos");
     if (topbar && Array.isArray(DADOS_LOJA.avisosTopo) && DADOS_LOJA.avisosTopo.length) {
       topbar.innerHTML = DADOS_LOJA.avisosTopo
@@ -131,225 +176,122 @@
   }
 
   // ==========================================================================
-  // 2. CATEGORIAS, BUSCA E RENDERIZAÇÃO DO CATÁLOGO
+  // 3. GERADOR DE CARDS DE PRODUTOS (USADO NO INÍCIO E NO CATÁLOGO)
   // ==========================================================================
-  function renderizarPillsCategorias() {
-    const container = document.getElementById("filtros-categoria");
-    if (!container) return;
-
-    const categoriasUnicas = ["Todos"];
-    DADOS_LOJA.produtos.forEach((p) => {
-      if (p.categoria && !categoriasUnicas.includes(p.categoria)) {
-        categoriasUnicas.push(p.categoria);
-      }
-    });
-
-    container.innerHTML = categoriasUnicas
-      .map((cat) => {
-        const ativo = !estado.apenasFavoritos && estado.categoriaAtiva === cat ? "active" : "";
-        return `<button type="button" class="cat-pill ${ativo}" data-cat="${cat}">${cat}</button>`;
-      })
-      .join("");
-
-    container.querySelectorAll(".cat-pill").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        estado.categoriaAtiva = btn.getAttribute("data-cat");
-        estado.apenasFavoritos = false;
-        renderizarPillsCategorias();
-        renderizarCatalogo();
-      });
-    });
-  }
-
-  function obterProdutosFiltrados() {
-    let lista = [...DADOS_LOJA.produtos];
-
-    if (estado.apenasFavoritos) {
-      lista = lista.filter((p) => estado.favoritos.includes(p.id));
-    } else if (estado.categoriaAtiva !== "Todos") {
-      lista = lista.filter((p) => p.categoria === estado.categoriaAtiva);
-    }
-
-    if (estado.busca.trim() !== "") {
-      const q = estado.busca.trim().toLowerCase();
-      lista = lista.filter((p) => {
-        const texto = [
-          p.nome,
-          p.categoria,
-          p.descricao,
-          p.tecido,
-          ...(p.cores || [])
-        ]
-          .join(" ")
-          .toLowerCase();
-        return texto.includes(q);
-      });
-    }
-
-    if (estado.ordenacao === "menor-preco") {
-      lista.sort((a, b) => a.preco - b.preco);
-    } else if (estado.ordenacao === "maior-preco") {
-      lista.sort((a, b) => b.preco - a.preco);
-    } else if (estado.ordenacao === "novidades") {
-      lista.sort((a, b) => Number(Boolean(b.novo)) - Number(Boolean(a.novo)));
-    }
-
-    return lista;
-  }
-
-  function atualizarBannerFiltroAtivo(qtdResultados) {
-    const banner = document.getElementById("banner-filtro-ativo");
-    const texto = document.getElementById("texto-filtro-ativo");
-    if (!banner || !texto) return;
-
-    if (estado.apenasFavoritos || estado.busca.trim() !== "") {
-      const partes = [];
-      if (estado.apenasFavoritos) partes.push("♥ Meus Favoritos");
-      if (estado.busca.trim() !== "") partes.push(`Busca: "${estado.busca.trim()}"`);
-      texto.textContent = `${partes.join(" • ")} (${qtdResultados} ${
-        qtdResultados === 1 ? "peça encontrada" : "peças encontradas"
-      })`;
-      banner.classList.remove("hidden");
-    } else {
-      banner.classList.add("hidden");
-    }
-  }
-
-  function renderizarCatalogo() {
-    const grade = document.getElementById("grade-produtos");
-    const vazio = document.getElementById("catalogo-vazio");
-    if (!grade || !vazio) return;
-
-    const produtos = obterProdutosFiltrados();
-    atualizarBannerFiltroAtivo(produtos.length);
-
-    if (produtos.length === 0) {
-      grade.innerHTML = "";
-      vazio.classList.remove("hidden");
-      return;
-    }
-
-    vazio.classList.add("hidden");
+  function montarHtmlCardProduto(prod) {
     const percPix = DADOS_LOJA.descontoPixPercentual || 0;
     const parcelas = DADOS_LOJA.parcelasSemJuros || 3;
+    const tamSelecionado =
+      estado.selecaoTamanhoCard[prod.id] ||
+      (estado.tamanhoFiltro !== "Todos" && (prod.tamanhos || []).includes(estado.tamanhoFiltro)
+        ? estado.tamanhoFiltro
+        : "");
 
-    grade.innerHTML = produtos
-      .map((prod) => {
-        const isFav = estado.favoritos.includes(prod.id);
-        const tamSelecionado = estado.selecaoTamanhoCard[prod.id] || "";
-        const precoPix = prod.preco * (1 - percPix / 100);
-        const valorParcela = prod.preco / parcelas;
-        const tagTexto = (prod.destaque || "").trim();
-        const isOferta = Boolean(prod.precoAntigo && prod.precoAntigo > prod.preco);
+    const precoPix = prod.preco * (1 - percPix / 100);
+    const valorParcela = prod.preco / parcelas;
+    const isOferta = Boolean(prod.precoAntigo && prod.precoAntigo > prod.preco);
+    const percDesconto = isOferta
+      ? Math.round(((prod.precoAntigo - prod.preco) / prod.precoAntigo) * 100)
+      : 0;
+    const tagTexto = (prod.destaque || (isOferta ? `-${percDesconto}% OFF` : "")).trim();
 
-        return `
-          <article class="product-card" data-prod-id="${prod.id}">
-            <div class="product-media" data-abrir-modal="${prod.id}">
-              <img src="${prod.imagem}" alt="${prod.nome}" loading="lazy" />
+    return `
+      <article class="product-card" data-prod-id="${prod.id}">
+        <div class="product-media" data-abrir-modal="${prod.id}">
+          <img src="${prod.imagem}" alt="${prod.nome}" loading="lazy" />
+          ${
+            tagTexto
+              ? `<span class="product-badge ${isOferta ? "sale" : ""}">${tagTexto}</span>`
+              : ""
+          }
+          <span class="quick-detail-hint">Ver detalhes</span>
+        </div>
+
+        <div class="product-info">
+          <span class="product-cat">${prod.categoria}</span>
+          <h3 class="product-title" data-abrir-modal="${prod.id}">${prod.nome}</h3>
+
+          <div class="price-block">
+            <div class="price-main-line">
               ${
-                tagTexto
-                  ? `<span class="product-badge ${isOferta ? "sale" : ""}">${tagTexto}</span>`
+                isOferta
+                  ? `<span class="old-price">${formatarMoeda(prod.precoAntigo)}</span>`
                   : ""
               }
-              <button
-                type="button"
-                class="fav-btn ${isFav ? "active" : ""}"
-                data-fav-id="${prod.id}"
-                aria-label="Salvar nos favoritos"
-                title="Favoritar peça"
-              >
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
-                </svg>
-              </button>
-              <span class="quick-detail-hint">Ver detalhes</span>
+              <span class="current-price">${formatarMoeda(prod.preco)}</span>
             </div>
+            ${
+              percPix > 0
+                ? `<div class="pix-price-hint">${formatarMoeda(precoPix)} no PIX (${percPix}% OFF)</div>`
+                : ""
+            }
+            <div class="installment-hint">ou ${parcelas}x de ${formatarMoeda(valorParcela)} sem juros</div>
+          </div>
 
-            <div class="product-info">
-              <span class="product-cat">${prod.categoria}</span>
-              <h3 class="product-title" data-abrir-modal="${prod.id}">${prod.nome}</h3>
-
-              <div class="price-block">
-                <div class="price-main-line">
-                  ${
-                    isOferta
-                      ? `<span class="old-price">${formatarMoeda(prod.precoAntigo)}</span>`
-                      : ""
-                  }
-                  <span class="current-price">${formatarMoeda(prod.preco)}</span>
-                </div>
-                ${
-                  percPix > 0
-                    ? `<div class="pix-price-hint">${formatarMoeda(precoPix)} no PIX (${percPix}% OFF)</div>`
-                    : ""
-                }
-                <div class="installment-hint">ou ${parcelas}x de ${formatarMoeda(valorParcela)} sem juros</div>
-              </div>
-
-              <div class="card-sizes-wrap">
-                <div class="card-size-label" id="label-tam-${prod.id}">
-                  <span>Tamanho:</span>
-                  ${tamSelecionado ? `<strong>${tamSelecionado}</strong>` : ""}
-                </div>
-                <div class="size-chips">
-                  ${(prod.tamanhos || [])
-                    .map(
-                      (tam) => `
-                      <button
-                        type="button"
-                        class="size-chip ${tamSelecionado === tam ? "selected" : ""}"
-                        data-card-tam="${tam}"
-                        data-card-prod="${prod.id}"
-                      >${tam}</button>
-                    `
-                    )
-                    .join("")}
-                </div>
-                <button type="button" class="btn-card-add" data-add-card="${prod.id}">
-                  Adicionar à Sacola
-                </button>
-              </div>
+          <div class="card-sizes-wrap">
+            <div class="card-size-label" data-label-tam>
+              <span>Tamanho:</span>
+              ${tamSelecionado ? `<strong>${tamSelecionado}</strong>` : ""}
             </div>
-          </article>
-        `;
-      })
-      .join("");
+            <div class="size-chips">
+              ${(prod.tamanhos || [])
+                .map(
+                  (tam) => `
+                  <button
+                    type="button"
+                    class="size-chip ${tamSelecionado === tam ? "selected" : ""}"
+                    data-card-tam="${tam}"
+                    data-card-prod="${prod.id}"
+                  >${tam}</button>
+                `
+                )
+                .join("")}
+            </div>
+            <button type="button" class="btn-card-add" data-add-card="${prod.id}">
+              Adicionar à Sacola
+            </button>
+          </div>
+        </div>
+      </article>
+    `;
+  }
 
-    // Eventos dos cards
-    grade.querySelectorAll("[data-abrir-modal]").forEach((el) => {
-      el.addEventListener("click", (e) => {
-        if (e.target.closest("[data-fav-id]")) return;
+  function conectarEventosDeGrade(container) {
+    if (!container) return;
+
+    container.querySelectorAll("[data-abrir-modal]").forEach((el) => {
+      el.addEventListener("click", () => {
         abrirModalProduto(el.getAttribute("data-abrir-modal"));
       });
     });
 
-    grade.querySelectorAll("[data-fav-id]").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        alternarFavorito(btn.getAttribute("data-fav-id"));
-      });
-    });
-
-    grade.querySelectorAll("[data-card-tam]").forEach((chip) => {
+    container.querySelectorAll("[data-card-tam]").forEach((chip) => {
       chip.addEventListener("click", () => {
         const prodId = chip.getAttribute("data-card-prod");
         const tam = chip.getAttribute("data-card-tam");
         estado.selecaoTamanhoCard[prodId] = tam;
+        renderizarVitrinesInicio();
         renderizarCatalogo();
       });
     });
 
-    grade.querySelectorAll("[data-add-card]").forEach((btn) => {
+    container.querySelectorAll("[data-add-card]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const prodId = btn.getAttribute("data-add-card");
         const prod = DADOS_LOJA.produtos.find((p) => p.id === prodId);
         if (!prod) return;
 
-        const tam = estado.selecaoTamanhoCard[prodId];
+        const tam =
+          estado.selecaoTamanhoCard[prodId] ||
+          (estado.tamanhoFiltro !== "Todos" && (prod.tamanhos || []).includes(estado.tamanhoFiltro)
+            ? estado.tamanhoFiltro
+            : "");
+
         if (!tam) {
-          const label = document.getElementById(`label-tam-${prodId}`);
+          const card = btn.closest(".product-card");
+          const label = card ? card.querySelector("[data-label-tam]") : null;
           if (label) {
-            label.innerHTML = "<span>👆 Escolha um tamanho acima:</span>";
+            label.innerHTML = "<span>👆 Escolha um tamanho:</span>";
             label.classList.add("error-pulse");
           }
           mostrarToast("Selecione um tamanho antes de adicionar à sacola ✨");
@@ -363,32 +305,240 @@
   }
 
   // ==========================================================================
-  // 3. FAVORITOS
+  // 4. ABA INÍCIO: VITRINES (MAIS VENDIDAS + PROMOÇÕES) E PESQUISA RÁPIDA
   // ==========================================================================
-  function atualizarBadgeFavoritos() {
-    const badge = document.getElementById("badge-favoritos");
-    if (!badge) return;
-    const total = estado.favoritos.length;
-    badge.textContent = String(total);
-    badge.classList.toggle("hidden", total === 0);
+  function renderizarVitrinesInicio() {
+    const gradeMaisVendidas = document.getElementById("grade-mais-vendidas");
+    const gradePromocoes = document.getElementById("grade-promocoes");
+
+    if (gradeMaisVendidas) {
+      const maisVendidas = DADOS_LOJA.produtos.filter((p) => Boolean(p.maisVendido));
+      gradeMaisVendidas.innerHTML = maisVendidas.map(montarHtmlCardProduto).join("");
+      conectarEventosDeGrade(gradeMaisVendidas);
+    }
+
+    if (gradePromocoes) {
+      const promocoes = DADOS_LOJA.produtos.filter(
+        (p) => Boolean(p.precoAntigo && p.precoAntigo > p.preco)
+      );
+      gradePromocoes.innerHTML = promocoes.map(montarHtmlCardProduto).join("");
+      conectarEventosDeGrade(gradePromocoes);
+    }
   }
 
-  function alternarFavorito(prodId) {
-    const idx = estado.favoritos.indexOf(prodId);
-    if (idx >= 0) {
-      estado.favoritos.splice(idx, 1);
-      mostrarToast("Removido dos favoritos");
-    } else {
-      estado.favoritos.push(prodId);
-      mostrarToast("♥ Salvo nos seus favoritos!");
+  function corresponderTextoBusca(prod, termo) {
+    const q = termo.trim().toLowerCase();
+    if (!q) return true;
+    const texto = [
+      prod.nome,
+      prod.categoria,
+      prod.descricao,
+      prod.tecido,
+      ...(prod.cores || [])
+    ]
+      .join(" ")
+      .toLowerCase();
+    return texto.includes(q);
+  }
+
+  function atualizarResultadosRapidosInicio(termo) {
+    const box = document.getElementById("resultados-rapidos-inicio");
+    if (!box) return;
+
+    const q = termo.trim();
+    if (!q) {
+      box.classList.add("hidden");
+      box.innerHTML = "";
+      return;
     }
-    storage.set("loja_favoritos_v1", estado.favoritos);
-    atualizarBadgeFavoritos();
+
+    const encontrados = DADOS_LOJA.produtos.filter((p) => corresponderTextoBusca(p, q));
+    box.classList.remove("hidden");
+
+    if (encontrados.length === 0) {
+      box.innerHTML = `<p style="font-size:0.86rem;color:var(--ink-soft);">Nenhuma peça encontrada para "<strong>${q}</strong>". Clique em Buscar no Catálogo para explorar todas as categorias.</p>`;
+      return;
+    }
+
+    box.innerHTML = `
+      <div class="live-results-list">
+        ${encontrados
+          .slice(0, 4)
+          .map(
+            (p) => `
+          <div class="live-result-item" data-live-prod="${p.id}">
+            <img src="${p.imagem}" alt="${p.nome}" />
+            <div>
+              <strong>${p.nome}</strong>
+              <span>${formatarMoeda(p.preco)}</span>
+            </div>
+          </div>
+        `
+          )
+          .join("")}
+      </div>
+      <button type="button" class="text-btn" id="btn-ir-resultados-catalogo">
+        Ver todos os ${encontrados.length} resultado(s) no Catálogo →
+      </button>
+    `;
+
+    box.querySelectorAll("[data-live-prod]").forEach((el) => {
+      el.addEventListener("click", () => abrirModalProduto(el.getAttribute("data-live-prod")));
+    });
+
+    const btnIr = document.getElementById("btn-ir-resultados-catalogo");
+    if (btnIr) {
+      btnIr.addEventListener("click", () => {
+        aplicarBuscaEIrParaCatalogo(q);
+      });
+    }
+  }
+
+  function aplicarBuscaEIrParaCatalogo(termo) {
+    estado.busca = termo.trim();
+    const inputCat = document.getElementById("input-pesquisa-catalogo");
+    if (inputCat) inputCat.value = estado.busca;
+    document
+      .getElementById("btn-limpar-texto-busca")
+      .classList.toggle("hidden", estado.busca === "");
+    renderizarCatalogo();
+    navegarParaAba("catalogo");
+  }
+
+  // ==========================================================================
+  // 5. ABA CATÁLOGO: PESQUISA + FILTROS COMPLETOS
+  // ==========================================================================
+  function renderizarPillsCategorias() {
+    const container = document.getElementById("filtros-categoria");
+    if (!container) return;
+
+    const categorias = ["Todas"];
+    DADOS_LOJA.produtos.forEach((p) => {
+      if (p.categoria && !categorias.includes(p.categoria)) {
+        categorias.push(p.categoria);
+      }
+    });
+
+    container.innerHTML = categorias
+      .map((cat) => {
+        const ativo = estado.categoriaAtiva === cat ? "active" : "";
+        return `<button type="button" class="cat-pill ${ativo}" data-cat="${cat}">${cat}</button>`;
+      })
+      .join("");
+
+    container.querySelectorAll(".cat-pill").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        estado.categoriaAtiva = btn.getAttribute("data-cat");
+        renderizarPillsCategorias();
+        renderizarCatalogo();
+      });
+    });
+  }
+
+  function obterProdutosFiltradosCatalogo() {
+    let lista = [...DADOS_LOJA.produtos];
+
+    if (estado.categoriaAtiva !== "Todas") {
+      lista = lista.filter((p) => p.categoria === estado.categoriaAtiva);
+    }
+
+    if (estado.tamanhoFiltro !== "Todos") {
+      lista = lista.filter((p) => (p.tamanhos || []).includes(estado.tamanhoFiltro));
+    }
+
+    if (estado.precoFiltro === "promocao") {
+      lista = lista.filter((p) => Boolean(p.precoAntigo && p.precoAntigo > p.preco));
+    } else if (estado.precoFiltro === "ate-220") {
+      lista = lista.filter((p) => p.preco <= 220);
+    } else if (estado.precoFiltro === "220-330") {
+      lista = lista.filter((p) => p.preco > 220 && p.preco <= 330);
+    } else if (estado.precoFiltro === "acima-330") {
+      lista = lista.filter((p) => p.preco > 330);
+    }
+
+    if (estado.busca.trim() !== "") {
+      lista = lista.filter((p) => corresponderTextoBusca(p, estado.busca));
+    }
+
+    if (estado.ordenacao === "mais-vendidas") {
+      lista.sort((a, b) => Number(Boolean(b.maisVendido)) - Number(Boolean(a.maisVendido)));
+    } else if (estado.ordenacao === "menor-preco") {
+      lista.sort((a, b) => a.preco - b.preco);
+    } else if (estado.ordenacao === "maior-preco") {
+      lista.sort((a, b) => b.preco - a.preco);
+    } else if (estado.ordenacao === "maior-desconto") {
+      const desc = (p) => (p.precoAntigo && p.precoAntigo > p.preco ? p.precoAntigo - p.preco : 0);
+      lista.sort((a, b) => desc(b) - desc(a));
+    }
+
+    return lista;
+  }
+
+  function temFiltroAtivoNoCatalogo() {
+    return (
+      estado.categoriaAtiva !== "Todas" ||
+      estado.tamanhoFiltro !== "Todos" ||
+      estado.precoFiltro !== "todos" ||
+      estado.busca.trim() !== ""
+    );
+  }
+
+  function renderizarCatalogo() {
+    const grade = document.getElementById("grade-catalogo");
+    const vazio = document.getElementById("catalogo-vazio");
+    const contador = document.getElementById("contador-resultados-catalogo");
+    const btnLimpar = document.getElementById("btn-limpar-filtros");
+    if (!grade || !vazio) return;
+
+    const filtrados = obterProdutosFiltradosCatalogo();
+    const totalGeral = DADOS_LOJA.produtos.length;
+
+    if (contador) {
+      contador.textContent =
+        filtrados.length === totalGeral
+          ? `Exibindo todas as ${totalGeral} peças`
+          : `Encontradas ${filtrados.length} de ${totalGeral} peças`;
+    }
+
+    if (btnLimpar) {
+      btnLimpar.classList.toggle("hidden", !temFiltroAtivoNoCatalogo());
+    }
+
+    if (filtrados.length === 0) {
+      grade.innerHTML = "";
+      vazio.classList.remove("hidden");
+      return;
+    }
+
+    vazio.classList.add("hidden");
+    grade.innerHTML = filtrados.map(montarHtmlCardProduto).join("");
+    conectarEventosDeGrade(grade);
+  }
+
+  function limparTodosOsFiltros() {
+    estado.busca = "";
+    estado.categoriaAtiva = "Todas";
+    estado.tamanhoFiltro = "Todos";
+    estado.precoFiltro = "todos";
+    estado.ordenacao = "destaques";
+
+    const inputCat = document.getElementById("input-pesquisa-catalogo");
+    const inputHome = document.getElementById("input-pesquisa-inicio");
+    if (inputCat) inputCat.value = "";
+    if (inputHome) inputHome.value = "";
+
+    document.getElementById("btn-limpar-texto-busca").classList.add("hidden");
+    document.getElementById("filtro-tamanho").value = "Todos";
+    document.getElementById("filtro-preco").value = "todos";
+    document.getElementById("select-ordenacao").value = "destaques";
+    atualizarResultadosRapidosInicio("");
+
+    renderizarPillsCategorias();
     renderizarCatalogo();
   }
 
   // ==========================================================================
-  // 4. MODAL DE DETALHES DO PRODUTO
+  // 6. MODAL DE DETALHES DO PRODUTO
   // ==========================================================================
   function abrirModalProduto(prodId) {
     const prod = DADOS_LOJA.produtos.find((p) => p.id === prodId);
@@ -398,7 +548,8 @@
     const modal = document.getElementById("modal-produto");
     if (!container || !modal) return;
 
-    let tamEscolhido = estado.selecaoTamanhoCard[prod.id] || (prod.tamanhos && prod.tamanhos[0]) || "Único";
+    let tamEscolhido =
+      estado.selecaoTamanhoCard[prod.id] || (prod.tamanhos && prod.tamanhos[0]) || "Único";
     let corEscolhida = (prod.cores && prod.cores[0]) || "Padrão";
 
     const percPix = DADOS_LOJA.descontoPixPercentual || 0;
@@ -434,7 +585,7 @@
           </div>
 
           <p class="modal-prod-desc">${prod.descricao}</p>
-          <div class="modal-fabric-box"><strong>Composição &amp; Detalhes:</strong> ${prod.tecido}</div>
+          <div class="modal-fabric-box"><strong>Tecido &amp; Detalhes:</strong> ${prod.tecido}</div>
 
           ${
             prod.cores && prod.cores.length > 0
@@ -503,13 +654,10 @@
         });
       });
 
-      const btnMedidas = document.getElementById("btn-medidas-dentro-modal");
-      if (btnMedidas) {
-        btnMedidas.addEventListener("click", () => {
-          fecharTodosModais();
-          abrirModalMedidas();
-        });
-      }
+      document.getElementById("btn-medidas-dentro-modal").addEventListener("click", () => {
+        fecharTodosModais();
+        abrirCamada(document.getElementById("modal-medidas"));
+      });
 
       document.getElementById("btn-modal-add-sacola").addEventListener("click", () => {
         fecharTodosModais();
@@ -536,10 +684,10 @@
   }
 
   // ==========================================================================
-  // 5. SACOLA DE COMPRAS E CHECKOUT WHATSAPP
+  // 7. SACOLA DE COMPRAS E CHECKOUT WHATSAPP
   // ==========================================================================
   function salvarSacola() {
-    storage.set("loja_sacola_v1", estado.sacola);
+    storage.set("rpm_sacola_v1", estado.sacola);
   }
 
   function adicionarNaSacola(prod, tamanho, cor, qtd) {
@@ -563,6 +711,7 @@
 
     salvarSacola();
     renderizarSacola();
+    renderizarVitrinesInicio();
     renderizarCatalogo();
     abrirSacola();
     mostrarToast(`✨ ${prod.nome} (${tamanho}) adicionado à sacola!`);
@@ -620,7 +769,6 @@
   function renderizarSacola() {
     const totais = calcularTotaisSacola();
 
-    // Badge topo
     const badge = document.getElementById("badge-sacola");
     if (badge) badge.textContent = String(totais.qtdTotal);
 
@@ -631,7 +779,6 @@
       }`;
     }
 
-    // Barra de frete grátis
     const barraContainer = document.getElementById("barra-frete-container");
     const textoFrete = document.getElementById("texto-progresso-frete");
     const barraFill = document.getElementById("preenchimento-frete");
@@ -704,7 +851,6 @@
       b.addEventListener("click", () => removerItemSacola(b.getAttribute("data-remover")))
     );
 
-    // Resumo financeiro
     document.getElementById("resumo-subtotal").textContent = formatarMoeda(totais.subtotal);
 
     const linhaCupom = document.getElementById("linha-desconto-cupom");
@@ -760,7 +906,7 @@
         feedback.className = "coupon-feedback ok";
       }
       renderizarSacola();
-      mostrarToast(`🎁 Cupom ${codigo} ativado com sucesso!`);
+      mostrarToast(`🎁 Cupom ${codigo} ativado!`);
     } else {
       estado.cupomAtivo = null;
       if (feedback) {
@@ -844,16 +990,15 @@
 
     abrirCamada(modalConf);
 
-    // Tenta abrir o WhatsApp em nova aba automaticamente
     try {
       window.open(urlWa, "_blank", "noopener");
     } catch (_) {
-      // Caso o navegador bloqueie pop-ups, o botão verde no modal garante o clique direto
+      // Botão no modal permanece disponível
     }
   }
 
   // ==========================================================================
-  // 6. CONTROLE DE DRAWERS, MODAIS E EVENTOS GERAIS
+  // 8. CONTROLES GERAIS E EVENTOS
   // ==========================================================================
   function abrirCamada(elemento) {
     document.getElementById("backdrop").classList.remove("hidden");
@@ -878,18 +1023,145 @@
     abrirCamada(document.getElementById("sacola-drawer"));
   }
 
-  function abrirModalMedidas() {
-    fecharTodosModais();
-    abrirCamada(document.getElementById("modal-medidas"));
-  }
-
-  function abrirAtendimentoGeral() {
-    const msg = `Olá! Vim pelo site da *${DADOS_LOJA.nomeLoja}* e gostaria de tirar uma dúvida sobre as peças ✨`;
-    window.open(gerarLinkWhatsApp(msg), "_blank", "noopener");
-  }
-
   function configurarEventos() {
-    // Abrir e fechar sacola / menu / modais
+    // Cliques em todas as abas (Início, Catálogo, Contato)
+    document.querySelectorAll("[data-aba-link]").forEach((el) => {
+      el.addEventListener("click", (e) => {
+        e.preventDefault();
+        const aba = el.getAttribute("data-aba-link");
+        fecharTodosModais();
+        navegarParaAba(aba);
+      });
+    });
+
+    // Pesquisa na aba Início
+    const inputHome = document.getElementById("input-pesquisa-inicio");
+    const formHome = document.getElementById("form-pesquisa-inicio");
+
+    inputHome.addEventListener("input", (e) => {
+      atualizarResultadosRapidosInicio(e.target.value);
+    });
+
+    formHome.addEventListener("submit", (e) => {
+      e.preventDefault();
+      aplicarBuscaEIrParaCatalogo(inputHome.value);
+    });
+
+    // Atalhos rápidos da pesquisa na aba Início
+    document.querySelectorAll("[data-atalho-cat]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        limparTodosOsFiltros();
+        estado.categoriaAtiva = btn.getAttribute("data-atalho-cat");
+        renderizarPillsCategorias();
+        renderizarCatalogo();
+        navegarParaAba("catalogo");
+      });
+    });
+
+    document.querySelectorAll("[data-atalho-promo]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        limparTodosOsFiltros();
+        estado.precoFiltro = "promocao";
+        document.getElementById("filtro-preco").value = "promocao";
+        renderizarCatalogo();
+        navegarParaAba("catalogo");
+      });
+    });
+
+    document.getElementById("btn-ver-todas-promos").addEventListener("click", () => {
+      limparTodosOsFiltros();
+      estado.precoFiltro = "promocao";
+      document.getElementById("filtro-preco").value = "promocao";
+      renderizarCatalogo();
+      navegarParaAba("catalogo");
+    });
+
+    document.getElementById("btn-ativar-cupom-home").addEventListener("click", () => {
+      const cod = document.getElementById("codigo-cupom-destaque").textContent.trim();
+      aplicarCupomCodigo(cod);
+      abrirSacola();
+    });
+
+    // Pesquisa e filtros na aba Catálogo
+    const inputCat = document.getElementById("input-pesquisa-catalogo");
+    const btnLimparTexto = document.getElementById("btn-limpar-texto-busca");
+
+    inputCat.addEventListener("input", (e) => {
+      estado.busca = e.target.value;
+      btnLimparTexto.classList.toggle("hidden", estado.busca.trim() === "");
+      renderizarCatalogo();
+    });
+
+    btnLimparTexto.addEventListener("click", () => {
+      estado.busca = "";
+      inputCat.value = "";
+      btnLimparTexto.classList.add("hidden");
+      renderizarCatalogo();
+      inputCat.focus();
+    });
+
+    document.getElementById("filtro-tamanho").addEventListener("change", (e) => {
+      estado.tamanhoFiltro = e.target.value;
+      renderizarCatalogo();
+    });
+
+    document.getElementById("filtro-preco").addEventListener("change", (e) => {
+      estado.precoFiltro = e.target.value;
+      renderizarCatalogo();
+    });
+
+    document.getElementById("select-ordenacao").addEventListener("change", (e) => {
+      estado.ordenacao = e.target.value;
+      renderizarCatalogo();
+    });
+
+    document.getElementById("btn-limpar-filtros").addEventListener("click", limparTodosOsFiltros);
+    document.getElementById("btn-resetar-vazio").addEventListener("click", limparTodosOsFiltros);
+
+    document.getElementById("btn-guia-medidas-catalogo").addEventListener("click", () => {
+      fecharTodosModais();
+      abrirCamada(document.getElementById("modal-medidas"));
+    });
+
+    // Aba Contato: copiar contatos e enviar mensagem direta
+    document.getElementById("btn-copiar-wa").addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(DADOS_LOJA.whatsappExibicao);
+        mostrarToast("✓ Número do WhatsApp copiado!");
+      } catch (_) {
+        mostrarToast(`WhatsApp: ${DADOS_LOJA.whatsappExibicao}`);
+      }
+    });
+
+    document.getElementById("btn-copiar-insta").addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(DADOS_LOJA.instagram);
+        mostrarToast("✓ @ do Instagram copiado!");
+      } catch (_) {
+        mostrarToast(`Instagram: ${DADOS_LOJA.instagram}`);
+      }
+    });
+
+    document.getElementById("form-contato-rapido").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const nome = document.getElementById("contato-nome").value.trim();
+      const assunto = document.getElementById("contato-assunto").value;
+      const texto = document.getElementById("contato-texto").value.trim();
+      if (!nome || !texto) return;
+
+      const msg = [
+        `Olá, *${DADOS_LOJA.nomeLoja}*! ✨`,
+        "",
+        `*Nome:* ${nome}`,
+        `*Assunto:* ${assunto}`,
+        `*Mensagem:* ${texto}`
+      ].join("\n");
+
+      window.open(gerarLinkWhatsApp(msg), "_blank", "noopener");
+      mostrarToast("Abrindo conversa no WhatsApp...");
+    });
+
+    // Sacola, menu e modais
     document.getElementById("btn-abrir-sacola").addEventListener("click", abrirSacola);
     document.getElementById("btn-fechar-sacola").addEventListener("click", fecharTodosModais);
     document.getElementById("btn-abrir-menu").addEventListener("click", () => {
@@ -906,102 +1178,15 @@
       if (e.key === "Escape") fecharTodosModais();
     });
 
-    // Botões de Guia de Medidas espalhados pelo site
-    ["btn-nav-medidas", "btn-mobile-medidas", "btn-footer-medidas", "btn-abrir-medidas-banner"].forEach(
-      (id) => {
-        const btn = document.getElementById(id);
-        if (btn) btn.addEventListener("click", abrirModalMedidas);
-      }
-    );
-
-    // Links de navegação que filtram categorias
-    document.querySelectorAll("[data-nav-cat]").forEach((link) => {
-      link.addEventListener("click", () => {
-        estado.categoriaAtiva = link.getAttribute("data-nav-cat");
-        estado.apenasFavoritos = false;
-        fecharTodosModais();
-        renderizarPillsCategorias();
-        renderizarCatalogo();
-      });
-    });
-
-    document.querySelectorAll(".mobile-anchor-close").forEach((a) => {
-      a.addEventListener("click", fecharTodosModais);
-    });
-
-    // Busca no topo e no catálogo sincronizadas
-    const painelBusca = document.getElementById("painel-busca");
-    const inputBuscaTopo = document.getElementById("input-busca-topo");
-    const inputBuscaCat = document.getElementById("input-busca-catalogo");
-
-    document.getElementById("btn-toggle-busca").addEventListener("click", () => {
-      painelBusca.classList.toggle("hidden");
-      if (!painelBusca.classList.contains("hidden")) {
-        inputBuscaTopo.focus();
-      }
-    });
-
-    document.getElementById("btn-fechar-busca").addEventListener("click", () => {
-      painelBusca.classList.add("hidden");
-    });
-
-    function atualizarBusca(valor) {
-      estado.busca = valor;
-      if (inputBuscaTopo.value !== valor) inputBuscaTopo.value = valor;
-      if (inputBuscaCat.value !== valor) inputBuscaCat.value = valor;
-      renderizarCatalogo();
-    }
-
-    inputBuscaTopo.addEventListener("input", (e) => {
-      atualizarBusca(e.target.value);
-      document.getElementById("catalogo").scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-
-    inputBuscaCat.addEventListener("input", (e) => atualizarBusca(e.target.value));
-
-    // Ordenação
-    document.getElementById("select-ordenacao").addEventListener("change", (e) => {
-      estado.ordenacao = e.target.value;
-      renderizarCatalogo();
-    });
-
-    // Favoritos no cabeçalho
-    document.getElementById("btn-ver-favoritos").addEventListener("click", () => {
-      estado.apenasFavoritos = !estado.apenasFavoritos;
-      renderizarPillsCategorias();
-      renderizarCatalogo();
-      document.getElementById("catalogo").scrollIntoView({ behavior: "smooth" });
-    });
-
-    // Limpar filtros / busca
-    const resetarFiltros = () => {
-      estado.categoriaAtiva = "Todos";
-      estado.apenasFavoritos = false;
-      atualizarBusca("");
-      renderizarPillsCategorias();
-      renderizarCatalogo();
-    };
-    document.getElementById("btn-limpar-filtros").addEventListener("click", resetarFiltros);
-    document.getElementById("btn-resetar-busca").addEventListener("click", resetarFiltros);
-
-    // Explorar da sacola vazia
     document.getElementById("btn-explorar-da-sacola").addEventListener("click", () => {
       fecharTodosModais();
-      document.getElementById("catalogo").scrollIntoView({ behavior: "smooth" });
+      navegarParaAba("catalogo");
     });
 
-    // Cupom na sacola e no banner promocional
     document.getElementById("btn-aplicar-cupom").addEventListener("click", () => {
       aplicarCupomCodigo(document.getElementById("input-cupom").value);
     });
 
-    document.getElementById("btn-copiar-cupom").addEventListener("click", () => {
-      const cod = document.getElementById("codigo-cupom-destaque").textContent.trim();
-      aplicarCupomCodigo(cod);
-      abrirSacola();
-    });
-
-    // Campos de entrega e pagamento na sacola
     document.getElementById("cliente-entrega").addEventListener("change", (e) => {
       const grupoEnd = document.getElementById("grupo-endereco");
       grupoEnd.classList.toggle("hidden", !e.target.value.includes("endereço"));
@@ -1009,7 +1194,6 @@
 
     document.getElementById("cliente-pagamento").addEventListener("change", renderizarSacola);
 
-    // Finalizar pedido e copiar texto
     document
       .getElementById("btn-finalizar-whatsapp")
       .addEventListener("click", finalizarPedidoWhatsApp);
@@ -1023,19 +1207,22 @@
         mostrarToast("Selecione o texto acima para copiar");
       }
     });
-
-    // Botões de contato direto WhatsApp
-    document.getElementById("btn-hero-whatsapp").addEventListener("click", abrirAtendimentoGeral);
-    document.getElementById("btn-wa-flutuante").addEventListener("click", abrirAtendimentoGeral);
   }
 
-  // Inicializa tudo quando a página carrega
   document.addEventListener("DOMContentLoaded", () => {
     preencherDadosDaLoja();
     renderizarPillsCategorias();
-    atualizarBadgeFavoritos();
+    renderizarVitrinesInicio();
     renderizarCatalogo();
     renderizarSacola();
     configurarEventos();
+
+    // Abre diretamente a aba caso a URL tenha #inicio, #catalogo ou #contato
+    const hashInicial = (window.location.hash || "").replace("#", "").toLowerCase();
+    if (["inicio", "catalogo", "contato"].includes(hashInicial)) {
+      navegarParaAba(hashInicial, false);
+    } else {
+      navegarParaAba("inicio", false);
+    }
   });
 })();
