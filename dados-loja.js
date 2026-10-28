@@ -18,7 +18,7 @@ const DADOS_LOJA = {
   // Importante: no campo whatsapp coloque 55 + DDD + número (apenas números)
   whatsapp: "5571991402776",
   whatsappExibicao: "(71) 99140-2776",
-  instagram: "@rpmmodas",
+  instagram: "@rpmmoda",
   urlInstagram: "https://instagram.com/rpmmoda",
   cidadeEstado: "Enviamos para todo o Brasil • Consulte entrega rápida na região",
   horarioAtendimento: "Segunda a Sexta: 9h às 19h • Sábado: 9h às 15h",
