@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#171411">
+  <meta name="description" content="RPM MODAS — moda feminina com elegância, personalidade e sofisticação.">
+  <title>RPM MODAS | Elegância em cada detalhe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <div class="announcement">ELEGÂNCIA QUE ACOMPANHA VOCÊ <span>✦</span> NOVA COLEÇÃO</div>
+  <header class="site-header">
+    <a class="brand" href="#inicio" aria-label="RPM MODAS — início">
+      <span class="brand-mark">RPM</span>
+      <span class="brand-caption">MODAS</span>
+    </a>
+    <button class="menu-toggle" id="menuToggle" aria-label="Abrir menu" aria-expanded="false">☰</button>
+    <nav class="main-nav" id="mainNav">
+      <a href="#inicio">Início</a>
+      <a href="#colecao">Coleção</a>
+      <a href="#sobre">A marca</a>
+      <a href="#contato">Contato</a>
+    </nav>
+    <button class="cart-button" id="openCart" aria-label="Abrir carrinho">
+      <span class="cart-icon">♧</span> <span class="cart-label">Sacola</span> <span class="cart-count" id="cartCount">0</span>
+    </button>
+  </header>
+
+  <main>
+    <section class="hero" id="inicio">
+      <div class="hero-image" role="img" aria-label="Editorial de moda feminina elegante"></div>
+      <div class="hero-shade"></div>
+      <div class="hero-content">
+        <p class="eyebrow light">COLEÇÃO • ESSÊNCIA</p>
+        <h1>Seu estilo.<br><em>Sua essência.</em></h1>
+        <p class="hero-copy">Peças que revelam a sua elegância em cada detalhe.</p>
+        <a class="button button-light" href="#colecao">Descobrir coleção <span>↗</span></a>
+      </div>
+      <div class="hero-note">MODA FEMININA • FEITA PARA VOCÊ</div>
+    </section>
+
+    <section class="intro section-wrap" id="sobre">
+      <p class="eyebrow">RPM MODAS APRESENTA</p>
+      <h2>Elegância não é chamar atenção.<br><em>É ser inesquecível.</em></h2>
+      <p class="intro-copy">Uma seleção de moda feminina para mulheres que transformam simplicidade em presença. Encontre seu próximo look favorito.</p>
+    </section>
+
+    <section class="collection section-wrap" id="colecao">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">ESCOLHAS DA ESTAÇÃO</p>
+          <h2>Peças em <em>destaque</em></h2>
+        </div>
+        <p class="heading-note">Seu próximo favorito está aqui.</p>
+      </div>
+      <div class="filter-row" aria-label="Filtrar produtos">
+        <button class="filter-chip active" data-filter="todos">Todos</button>
+        <button class="filter-chip" data-filter="vestidos">Vestidos</button>
+        <button class="filter-chip" data-filter="conjuntos">Conjuntos</button>
+        <button class="filter-chip" data-filter="blusas">Blusas</button>
+        <button class="filter-chip" data-filter="acessorios">Acessórios</button>
+      </div>
+      <div class="product-grid" id="productGrid" aria-live="polite"></div>
+    </section>
+
+    <section class="quote-banner">
+      <div class="quote-inner">
+        <p class="eyebrow light">O TOQUE RPM</p>
+        <h2>Vista-se de confiança.<br><em>Todos os dias.</em></h2>
+        <a href="#colecao" class="text-link light-link">Explore a coleção <span>↗</span></a>
+      </div>
+    </section>
+
+    <section class="benefits section-wrap">
+      <div class="benefit"><span class="benefit-icon">✧</span><h3>Estilo com propósito</h3><p>Peças selecionadas para expressar sua personalidade.</p></div>
+      <div class="benefit"><span class="benefit-icon">♡</span><h3>Atendimento próximo</h3><p>Converse com a gente e tire suas dúvidas pelo WhatsApp.</p></div>
+      <div class="benefit"><span class="benefit-icon">◇</span><h3>Compra descomplicada</h3><p>Monte sua sacola e envie seu pedido em poucos passos.</p></div>
+    </section>
+  </main>
+
+  <footer class="site-footer" id="contato">
+    <div class="footer-top">
+      <div>
+        <a class="brand footer-brand" href="#inicio"><span class="brand-mark">RPM</span><span class="brand-caption">MODAS</span></a>
+        <p class="footer-tagline">Elegância em cada detalhe.</p>
+      </div>
+      <div class="footer-links"><p class="eyebrow light">EXPLORE</p><a href="#colecao">Coleção</a><a href="#sobre">Nossa essência</a><a href="#contato">Atendimento</a></div>
+      <div class="footer-links"><p class="eyebrow light">FALE COM A GENTE</p><p>Pedidos e informações</p><a id="footerWhatsApp" href="#" target="_blank" rel="noopener">WhatsApp ↗</a></div>
+    </div>
+    <div class="footer-bottom"><span>© <span id="year"></span> RPM MODAS. Todos os direitos reservados.</span><span>MODA FEMININA • SOFISTICAÇÃO ATEMPORAL</span></div>
+  </footer>
+
+  <div class="overlay" id="overlay"></div>
+  <aside class="cart-drawer" id="cartDrawer" aria-label="Sua sacola" aria-hidden="true">
+    <div class="drawer-header"><div><p class="eyebrow">RPM MODAS</p><h2>Sua sacola <span id="drawerCount">(0)</span></h2></div><button class="icon-button" id="closeCart" aria-label="Fechar sacola">×</button></div>
+    <div class="cart-items" id="cartItems"></div>
+    <div class="cart-empty" id="cartEmpty"><span>♡</span><h3>Sua sacola está vazia</h3><p>Descubra peças para chamar de suas.</p><button class="button button-dark" id="continueShopping">Explorar coleção</button></div>
+    <div class="cart-footer" id="cartFooter">
+      <div class="cart-total"><span>Subtotal</span><strong id="cartTotal">R$ 0,00</strong></div>
+      <p class="cart-disclaimer">Frete e disponibilidade serão confirmados pelo WhatsApp.</p>
+      <button class="button button-dark checkout-button" id="checkoutButton">Finalizar pelo WhatsApp <span>↗</span></button>
+    </div>
+  </aside>
+
+  <div class="size-modal" id="sizeModal" role="dialog" aria-modal="true" aria-labelledby="sizeTitle" aria-hidden="true">
+    <button class="icon-button modal-close" id="closeSizeModal" aria-label="Fechar">×</button>
+    <p class="eyebrow">SUA ESCOLHA</p><h2 id="sizeTitle">Selecione o tamanho</h2><p class="modal-product-name" id="modalProductName"></p>
+    <div class="size-options" id="sizeOptions"></div>
+    <button class="button button-dark modal-add" id="confirmAdd" disabled>Adicionar à sacola</button>
+    <p class="modal-hint">Se tiver dúvidas sobre medidas, fale com nosso atendimento.</p>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
