@@ -49,7 +49,7 @@
         <button type="button" class="tab-nav-btn" data-aba-link="contato">Contato</button>
       </nav>
 
-      <!-- SACOLA DE COMPRAS -->
+      <!-- SACOLA DE COMPRAS E AUTENTICAÇÃO -->
       <div class="header-actions">
         <button type="button" class="bag-trigger" id="btn-abrir-sacola" aria-label="Abrir sacola de compras">
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
@@ -60,6 +60,55 @@
           <span class="bag-label">Sacola</span>
           <span class="badge" id="badge-sacola">0</span>
         </button>
+
+        <!-- Botão ENTRAR (exibido quando não autenticado) -->
+        <button type="button" class="btn-header-entrar" id="btn-header-entrar" aria-haspopup="dialog" aria-controls="modal-login">
+          ENTRAR
+        </button>
+
+        <!-- Identificação do Cliente Conectado (exibida quando autenticado) -->
+        <div class="auth-user-container hidden" id="auth-user-container">
+          <button
+            type="button"
+            class="auth-user-trigger"
+            id="btn-auth-user-trigger"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            title="Minha conta"
+          >
+            <span class="auth-avatar-frame">
+              <img
+                id="auth-user-avatar"
+                class="auth-user-avatar hidden"
+                src=""
+                alt="Foto do perfil"
+                referrerpolicy="no-referrer"
+              />
+              <span id="auth-user-initial" class="auth-user-initial">R</span>
+            </span>
+            <span class="auth-user-short-name" id="auth-user-short-name">Cliente</span>
+            <svg class="auth-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+
+          <!-- Menu da conta com opção de sair -->
+          <div class="auth-user-dropdown hidden" id="auth-user-dropdown" role="menu" aria-label="Menu da conta">
+            <div class="auth-dropdown-header">
+              <strong id="auth-menu-full-name">Cliente</strong>
+              <span id="auth-menu-email"></span>
+              <span class="auth-admin-badge hidden" id="auth-admin-badge">Conta Administradora</span>
+            </div>
+            <button type="button" class="auth-logout-btn" id="btn-auth-logout" role="menuitem">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
+              Sair da conta
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </header>
@@ -596,9 +645,68 @@
     </div>
   </div>
 
+  <!-- POP-UP DE LOGIN EXCLUSIVO GOOGLE -->
+  <div
+    class="login-modal-overlay hidden"
+    id="modal-login"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="titulo-modal-login"
+    aria-describedby="desc-modal-login"
+  >
+    <div class="login-modal-card">
+      <button
+        type="button"
+        class="modal-close login-modal-close"
+        id="btn-fechar-login"
+        aria-label="Fechar janela de login"
+      >
+        ✕
+      </button>
+
+      <div class="login-brand-seal">
+        <span class="login-brand-title">RPM MODAS</span>
+        <span class="login-brand-sub">MODA FEMININA</span>
+      </div>
+
+      <h3 id="titulo-modal-login">Bem-vinda à RPM MODAS</h3>
+      <p class="login-modal-text" id="desc-modal-login">
+        Entre na sua conta para aproveitar sua experiência na nossa loja.
+      </p>
+
+      <div class="login-erro-box hidden" id="login-erro-box" role="alert"></div>
+
+      <button type="button" class="btn-google-oauth" id="btn-continuar-google">
+        <!-- Ícone oficial colorido do Google -->
+        <svg
+          id="icone-oficial-google"
+          class="google-g-icon"
+          width="20"
+          height="20"
+          viewBox="0 0 48 48"
+          aria-hidden="true"
+        >
+          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+          <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+        </svg>
+
+        <!-- Indicador de carregamento -->
+        <span class="login-spinner hidden" id="login-google-spinner" aria-hidden="true"></span>
+
+        <span id="texto-btn-google">Continuar com Google</span>
+      </button>
+    </div>
+  </div>
+
   <!-- TOAST -->
   <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
 
+  <!-- BIBLIOTECA SUPABASE + MÓDULOS DE AUTENTICAÇÃO E LOJA -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+  <script src="auth.js"></script>
   <script src="dados-loja.js"></script>
   <script src="app.js"></script>
 </body>

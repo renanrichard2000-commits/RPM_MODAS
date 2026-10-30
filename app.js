@@ -89,10 +89,12 @@
       }
     });
 
-    try {
-      window.history.replaceState(null, "", `#${destino}`);
-    } catch (_) {
-      // Ignora em ambientes sem histórico
+    if (!window.RPMAuth || !window.RPMAuth.hasOAuthCallbackInUrl()) {
+      try {
+        window.history.replaceState(null, "", `#${destino}`);
+      } catch (_) {
+        // Ignora em ambientes sem histórico
+      }
     }
 
     if (rolarTopo) {
