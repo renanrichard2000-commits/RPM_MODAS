@@ -960,6 +960,10 @@
   // Inicializa o fallback local imediatamente para renderização instantânea
   carregarFallbackLocal();
 
+  // Pré-aquece o estoque de variantes imediatamente para cliques rápidos antes do retorno de rede
+  carregarFallbackLocal();
+  estadoCatalogo.carregado = false;
+
   window.RpmCatalog = Object.freeze({
     slugify: normalizarSlug,
     getColorHex: obterHexCor,

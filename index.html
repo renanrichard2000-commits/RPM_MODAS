@@ -551,6 +551,11 @@
     </div>
 
     <div class="cart-body" id="sacola-corpo">
+      <div class="cart-loading hidden" id="sacola-carregando" role="status" aria-live="polite">
+        <span class="login-spinner" aria-hidden="true"></span>
+        <p>Sincronizando os itens da sua conta...</p>
+      </div>
+
       <div class="cart-empty" id="sacola-vazia">
         <div class="cart-empty-icon">🛍️</div>
         <h4>Sua sacola está vazia</h4>
@@ -561,7 +566,7 @@
       <div id="sacola-conteudo-cheio" class="hidden">
         <ul class="cart-items-list" id="lista-itens-sacola"></ul>
 
-        <div class="checkout-form-box">
+        <div class="checkout-form-box" id="checkout-form-box">
           <h4>Dados para enviar no WhatsApp</h4>
 
           <div class="form-group">
@@ -716,6 +721,7 @@
         Entre na sua conta para continuar.
       </p>
 
+      <div class="login-aviso-box hidden" id="login-aviso-box" role="status"></div>
       <div class="login-erro-box hidden" id="login-erro-box" role="alert"></div>
 
       <!-- Botão 1: Clientes (Exclusivo Google OAuth) -->

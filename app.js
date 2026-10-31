@@ -7,28 +7,52 @@
 (function () {
   "use strict";
 
-  const storage = {
-    get(key, fallback) {
+  // Remove definitivamente qualquer chave legada global que misturava contas no mesmo navegador
+  try {
+    localStorage.removeItem("rpm_sacola_v1");
+  } catch (_) {}
+
+  const CHAVE_GUEST_CART = "rpm_guest_cart_v2";
+  const MENSAGEM_LOGIN_COMPRA = "Entre na sua conta para continuar com sua compra.";
+
+  const guestStorage = {
+    ler() {
       try {
-        const raw = localStorage.getItem(key);
-        return raw ? JSON.parse(raw) : fallback;
+        const raw = sessionStorage.getItem(CHAVE_GUEST_CART);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
       } catch (_) {
-        return fallback;
+        return [];
       }
     },
-    set(key, value) {
+    salvar(itens) {
       try {
-        localStorage.setItem(key, JSON.stringify(value));
-      } catch (_) {
-        // Ignora se restrito
-      }
+        sessionStorage.setItem(CHAVE_GUEST_CART, JSON.stringify(Array.isArray(itens) ? itens : []));
+      } catch (_) {}
+    },
+    limpar() {
+      try {
+        sessionStorage.removeItem(CHAVE_GUEST_CART);
+      } catch (_) {}
+      try {
+        localStorage.removeItem(CHAVE_GUEST_CART);
+      } catch (_) {}
     }
+  };
+
+  // Estados estritamente isolados: guestCart (visitante) NUNCA é mesclado com userCart (Supabase)
+  const controleSacola = {
+    modo: "inicializando", // "inicializando" | "guest" | "user"
+    userIdAtivo: null,
+    guestCart: [],
+    userCart: [],
+    carregandoUserCart: false,
+    seqSincronizacao: 0
   };
 
   const estado = {
     abaAtual: "inicio",
     slugProdutoAberto: null,
-    sacola: storage.get("rpm_sacola_v1", []),
     selecaoTamanhoCard: {},
     selecaoCorCard: {},
     busca: "",
@@ -228,25 +252,25 @@
 
     // Escolhe inicialmente uma cor que possua estoque > 0, se houver
     let corEscolhida =
-      estado.selecaoCorCard[prod.id] && coresDisp.includes(estado.selecaoCorCard[prod.id])
-        ? estado.selecaoCorCard[prod.id]
-        : coresDisp.find((c) => window.RpmCatalog.hasColorAnyStock(prod.id, c)) ||
+      estado.selecaoCorCard[prod.slug] && coresDisp.includes(estado.selecaoCorCard[prod.slug])
+        ? estado.selecaoCorCard[prod.slug]
+        : coresDisp.find((c) => window.RpmCatalog.hasColorAnyStock(prod.slug, c)) ||
           coresDisp[0] ||
           "";
 
     function obterPrimeiroTamanhoComEstoque(cor) {
       return (
-        tamanhosDisp.find((t) => window.RpmCatalog.getVariantStock(prod.id, cor, t) > 0) ||
+        tamanhosDisp.find((t) => window.RpmCatalog.getVariantStock(prod.slug, cor, t) > 0) ||
         tamanhosDisp[0] ||
         ""
       );
     }
 
     let tamEscolhido =
-      estado.selecaoTamanhoCard[prod.id] &&
-      tamanhosDisp.includes(estado.selecaoTamanhoCard[prod.id]) &&
-      window.RpmCatalog.getVariantStock(prod.id, corEscolhida, estado.selecaoTamanhoCard[prod.id]) > 0
-        ? estado.selecaoTamanhoCard[prod.id]
+      estado.selecaoTamanhoCard[prod.slug] &&
+      tamanhosDisp.includes(estado.selecaoTamanhoCard[prod.slug]) &&
+      window.RpmCatalog.getVariantStock(prod.slug, corEscolhida, estado.selecaoTamanhoCard[prod.slug]) > 0
+        ? estado.selecaoTamanhoCard[prod.slug]
         : obterPrimeiroTamanhoComEstoque(corEscolhida);
 
     let indiceFotoAtiva = 0;
@@ -559,7 +583,7 @@
       container.querySelectorAll("[data-pag-cor]").forEach((btn) => {
         btn.addEventListener("click", () => {
           corEscolhida = btn.getAttribute("data-pag-cor");
-          estado.selecaoCorCard[prod.id] = corEscolhida;
+          estado.selecaoCorCard[prod.slug] = corEscolhida;
 
           const idxFotoDaCor = galeria.findIndex(
             (img) =>
@@ -584,7 +608,7 @@
             return;
           }
           tamEscolhido = novoTam;
-          estado.selecaoTamanhoCard[prod.id] = tamEscolhido;
+          estado.selecaoTamanhoCard[prod.slug] = tamEscolhido;
           renderizarPaginaInterna();
         });
       });
@@ -605,7 +629,10 @@
 
       const btnComprarWa = document.getElementById("btn-pagina-comprar-wa");
       if (btnComprarWa && podeComprar) {
-        btnComprarWa.addEventListener("click", () => {
+        btnComprarWa.addEventListener("click", async () => {
+          const sessaoValida = await exigirAutenticacaoParaCompra();
+          if (!sessaoValida) return;
+
           const urlDireta = `${window.location.origin}${window.buildRpmRouteUrl(
             `produto/${prod.slug}`
           )}`;
@@ -710,16 +737,16 @@
 
     const coresProd = prod.cores || [];
     const corCard =
-      estado.selecaoCorCard[prod.id] && coresProd.includes(estado.selecaoCorCard[prod.id])
-        ? estado.selecaoCorCard[prod.id]
+      estado.selecaoCorCard[prod.slug] && coresProd.includes(estado.selecaoCorCard[prod.slug])
+        ? estado.selecaoCorCard[prod.slug]
         : coresProd.find(
-            (c) => window.RpmCatalog && window.RpmCatalog.hasColorAnyStock(prod.id, c)
+            (c) => window.RpmCatalog && window.RpmCatalog.hasColorAnyStock(prod.slug, c)
           ) ||
           coresProd[0] ||
           "";
 
     const tamSelecionado =
-      estado.selecaoTamanhoCard[prod.id] ||
+      estado.selecaoTamanhoCard[prod.slug] ||
       (estado.tamanhoFiltro !== "Todos" && (prod.tamanhos || []).includes(estado.tamanhoFiltro)
         ? estado.tamanhoFiltro
         : "");
@@ -786,7 +813,7 @@
                     title="Cor: ${escaparHtml(cObj.name)}"
                     aria-label="Cor ${escaparHtml(cObj.name)}"
                     data-card-cor="${escaparHtml(cObj.name)}"
-                    data-card-prod="${escaparHtml(prod.id)}"
+                    data-card-prod="${escaparHtml(prod.slug)}"
                   ></button>
                 `
                   )
@@ -806,7 +833,7 @@
                 .map((tam) => {
                   const est =
                     window.RpmCatalog && corCard
-                      ? window.RpmCatalog.getVariantStock(prod.id, corCard, tam)
+                      ? window.RpmCatalog.getVariantStock(prod.slug, corCard, tam)
                       : 5;
                   const semEst = est <= 0;
                   return `
@@ -816,7 +843,7 @@
                     semEst ? "sold-out" : ""
                   }"
                     data-card-tam="${escaparHtml(tam)}"
-                    data-card-prod="${escaparHtml(prod.id)}"
+                    data-card-prod="${escaparHtml(prod.slug)}"
                     ${semEst ? 'disabled title="Esgotado nesta cor"' : ""}
                   >${escaparHtml(tam)}</button>
                 `;
@@ -827,7 +854,7 @@
             <button
               type="button"
               class="btn-card-add"
-              data-add-card="${escaparHtml(prod.id)}"
+              data-add-card="${escaparHtml(prod.slug)}"
               ${prod.esgotadoGeral ? "disabled" : ""}
             >
               ${prod.esgotadoGeral ? "Peça Esgotada" : "Adicionar à Sacola"}
@@ -850,13 +877,13 @@
     container.querySelectorAll("[data-card-cor]").forEach((dot) => {
       dot.addEventListener("click", (e) => {
         e.stopPropagation();
-        const prodId = dot.getAttribute("data-card-prod");
+        const prodSlug = dot.getAttribute("data-card-prod");
         const cor = dot.getAttribute("data-card-cor");
-        estado.selecaoCorCard[prodId] = cor;
+        estado.selecaoCorCard[prodSlug] = cor;
 
-        const tamAtual = estado.selecaoTamanhoCard[prodId];
-        if (tamAtual && window.RpmCatalog.getVariantStock(prodId, cor, tamAtual) <= 0) {
-          delete estado.selecaoTamanhoCard[prodId];
+        const tamAtual = estado.selecaoTamanhoCard[prodSlug];
+        if (tamAtual && window.RpmCatalog.getVariantStock(prodSlug, cor, tamAtual) <= 0) {
+          delete estado.selecaoTamanhoCard[prodSlug];
         }
 
         renderizarVitrinesInicio();
@@ -870,9 +897,9 @@
     container.querySelectorAll("[data-card-tam]").forEach((chip) => {
       chip.addEventListener("click", (e) => {
         e.stopPropagation();
-        const prodId = chip.getAttribute("data-card-prod");
+        const prodSlug = chip.getAttribute("data-card-prod");
         const tam = chip.getAttribute("data-card-tam");
-        estado.selecaoTamanhoCard[prodId] = tam;
+        estado.selecaoTamanhoCard[prodSlug] = tam;
         renderizarVitrinesInicio();
         renderizarCatalogo();
       });
@@ -880,18 +907,20 @@
 
     container.querySelectorAll("[data-add-card]").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const prodId = btn.getAttribute("data-add-card");
-        const prod = obterProdutosPublicados().find((p) => String(p.id) === String(prodId));
+        const prodSlug = btn.getAttribute("data-add-card");
+        const prod = obterProdutosPublicados().find(
+          (p) => p.slug === prodSlug || String(p.id) === String(prodSlug)
+        );
         if (!prod || prod.esgotadoGeral) return;
 
         const corEscolhida =
-          estado.selecaoCorCard[prodId] ||
-          (prod.cores || []).find((c) => window.RpmCatalog.hasColorAnyStock(prod.id, c)) ||
+          estado.selecaoCorCard[prod.slug] ||
+          (prod.cores || []).find((c) => window.RpmCatalog.hasColorAnyStock(prod.slug, c)) ||
           (prod.cores && prod.cores[0]) ||
           "Única";
 
         const tam =
-          estado.selecaoTamanhoCard[prodId] ||
+          estado.selecaoTamanhoCard[prod.slug] ||
           (estado.tamanhoFiltro !== "Todos" && (prod.tamanhos || []).includes(estado.tamanhoFiltro)
             ? estado.tamanhoFiltro
             : "");
@@ -1182,15 +1211,261 @@
   }
 
   // ==========================================================================
-  // 7. SACOLA DE COMPRAS COM CONTROLE DE ESTOQUE + REVALIDAÇÃO PRÉ-CHECKOUT
+  // 7. SACOLA ISOLADA POR SESSÃO (guestCart vs userCart NO SUPABASE COM RLS)
   // ==========================================================================
-  function salvarSacola() {
-    storage.set("rpm_sacola_v1", estado.sacola);
+  function gerarUidSacola(slug, tamanho, cor) {
+    return `${String(slug || "").trim()}__${String(tamanho || "").trim()}__${String(
+      cor || ""
+    ).trim()}`;
   }
 
+  function descartarSacolaVisitante() {
+    controleSacola.guestCart = [];
+    guestStorage.limpar();
+  }
+
+  function obterSacolaVisivel() {
+    if (controleSacola.modo === "inicializando" || controleSacola.carregandoUserCart) {
+      return [];
+    }
+    if (controleSacola.modo === "user") {
+      return controleSacola.userCart;
+    }
+    return controleSacola.guestCart;
+  }
+
+  function mapearLinhaBancoParaItem(row) {
+    return {
+      dbId: row.id,
+      uid: gerarUidSacola(row.product_slug, row.size_code, row.color_name),
+      id: row.product_id,
+      slug: row.product_slug,
+      nome: row.product_name,
+      imagem: row.image_url,
+      preco: Number(row.unit_price || 0),
+      tamanho: row.size_code,
+      cor: row.color_name,
+      qtd: Math.max(1, Number(row.quantity || 1))
+    };
+  }
+
+  async function carregarSacolaDaContaNoSupabase(userId, seqEsperada) {
+    const supabase = window.getRpmSupabaseClient && window.getRpmSupabaseClient();
+    if (!supabase || !userId) {
+      if (seqEsperada === controleSacola.seqSincronizacao) {
+        controleSacola.userCart = [];
+        controleSacola.carregandoUserCart = false;
+        renderizarSacola();
+      }
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("cart_items")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: true });
+
+      // Garante que nenhuma resposta atrasada de outra sessão vaze para a conta atual
+      if (
+        seqEsperada !== controleSacola.seqSincronizacao ||
+        controleSacola.modo !== "user" ||
+        controleSacola.userIdAtivo !== userId
+      ) {
+        return;
+      }
+
+      if (error) {
+        if (error.code === "PGRST205") {
+          console.warn(
+            "[RPM Sacola] Tabela public.cart_items ainda não criada. Execute supabase-sacola-setup.sql no Supabase SQL Editor."
+          );
+        } else {
+          console.warn("[RPM Sacola] Erro ao carregar sacola da conta:", error.message);
+        }
+        controleSacola.userCart = [];
+      } else {
+        controleSacola.userCart = Array.isArray(data) ? data.map(mapearLinhaBancoParaItem) : [];
+      }
+    } catch (err) {
+      if (
+        seqEsperada !== controleSacola.seqSincronizacao ||
+        controleSacola.modo !== "user" ||
+        controleSacola.userIdAtivo !== userId
+      ) {
+        return;
+      }
+      console.warn("[RPM Sacola] Falha de rede ao consultar sacola da conta:", err);
+      controleSacola.userCart = [];
+    } finally {
+      if (
+        seqEsperada === controleSacola.seqSincronizacao &&
+        controleSacola.modo === "user" &&
+        controleSacola.userIdAtivo === userId
+      ) {
+        controleSacola.carregandoUserCart = false;
+        renderizarSacola();
+      }
+    }
+  }
+
+  async function salvarItemNaContaSupabase(userId, item) {
+    const supabase = window.getRpmSupabaseClient && window.getRpmSupabaseClient();
+    if (!supabase || !userId) return;
+
+    const payload = {
+      user_id: userId,
+      product_id: String(item.id),
+      product_slug: String(item.slug),
+      product_name: String(item.nome),
+      image_url: String(item.imagem),
+      unit_price: Number(item.preco),
+      color_name: String(item.cor),
+      size_code: String(item.tamanho),
+      quantity: Number(item.qtd)
+    };
+
+    const { error } = await supabase
+      .from("cart_items")
+      .upsert(payload, { onConflict: "user_id,product_slug,color_name,size_code" });
+
+    if (error && error.code !== "PGRST205") {
+      console.warn("[RPM Sacola] Erro ao salvar item na sacola da conta:", error.message);
+    }
+  }
+
+  async function removerItemDaContaSupabase(userId, item) {
+    const supabase = window.getRpmSupabaseClient && window.getRpmSupabaseClient();
+    if (!supabase || !userId || !item) return;
+
+    const { error } = await supabase
+      .from("cart_items")
+      .delete()
+      .eq("user_id", userId)
+      .eq("product_slug", String(item.slug))
+      .eq("color_name", String(item.cor))
+      .eq("size_code", String(item.tamanho));
+
+    if (error && error.code !== "PGRST205") {
+      console.warn("[RPM Sacola] Erro ao excluir item da sacola da conta:", error.message);
+    }
+  }
+
+  async function sincronizarListaCompletaNaContaSupabase(userId, itensAntes, itensDepois) {
+    const uidsDepois = new Set(itensDepois.map((i) => i.uid));
+    const removidos = itensAntes.filter((antigo) => !uidsDepois.has(antigo.uid));
+
+    await Promise.all([
+      ...removidos.map((rem) => removerItemDaContaSupabase(userId, rem)),
+      ...itensDepois.map((atu) => salvarItemNaContaSupabase(userId, atu))
+    ]);
+  }
+
+  // Fila sequencial para garantir ordem exata nas escritas assíncronas em public.cart_items
+  let filaEscritaSacola = Promise.resolve();
+  function enfileirarEscritaSacola(tarefaAsync) {
+    filaEscritaSacola = filaEscritaSacola.then(tarefaAsync).catch((err) => {
+      console.warn("[RPM Sacola] Falha em operação enfileirada:", err);
+    });
+    return filaEscritaSacola;
+  }
+
+  async function processarTransicaoSessaoSacola(usuario, evento) {
+    // 1. USUÁRIO AUTENTICADO (Login, F5 logado ou troca direta para outra conta)
+    if (usuario && usuario.id) {
+      // NUNCA transfere nem mantém sacola temporária de visitante ao entrar em uma conta
+      descartarSacolaVisitante();
+
+      // Evita recarregar em duplicidade quando INITIAL_SESSION ou TOKEN_REFRESHED dispara 2x para a mesma conta
+      if (
+        controleSacola.modo === "user" &&
+        controleSacola.userIdAtivo === usuario.id &&
+        (evento === "INITIAL_SESSION" ||
+          (!controleSacola.carregandoUserCart && evento === "TOKEN_REFRESHED"))
+      ) {
+        return;
+      }
+
+      const minhaSeq = ++controleSacola.seqSincronizacao;
+      controleSacola.modo = "user";
+      controleSacola.userIdAtivo = usuario.id;
+      // Limpa imediatamente qualquer resquício de conta anterior antes do carregamento assíncrono
+      controleSacola.userCart = [];
+      controleSacola.carregandoUserCart = true;
+      renderizarSacola();
+
+      await carregarSacolaDaContaNoSupabase(usuario.id, minhaSeq);
+      return;
+    }
+
+    // 2. VISITANTE NÃO AUTENTICADO (Acesso inicial sem login OU Logout)
+    // Se já estamos como visitante inicializado e chega um segundo INITIAL_SESSION idêntico, preserva a sacola temporária atual
+    if (
+      controleSacola.modo === "guest" &&
+      !controleSacola.userIdAtivo &&
+      evento === "INITIAL_SESSION"
+    ) {
+      return;
+    }
+
+    ++controleSacola.seqSincronizacao;
+    const saiuDeUmaConta = Boolean(controleSacola.userIdAtivo) || evento === "SIGNED_OUT";
+
+    // Limpa estado da conta em memória (sem apagar os registros salvos no Supabase)
+    controleSacola.userIdAtivo = null;
+    controleSacola.userCart = [];
+    controleSacola.carregandoUserCart = false;
+    controleSacola.modo = "guest";
+
+    if (saiuDeUmaConta) {
+      // Ao sair da conta, inicia uma sacola de visitante limpa e zera contador imediatamente
+      descartarSacolaVisitante();
+    } else {
+      // Visitante navegando sem nunca ter logado nesta aba recupera apenas sua sacola temporária
+      controleSacola.guestCart = guestStorage.ler();
+    }
+
+    renderizarSacola();
+  }
+
+  async function exigirAutenticacaoParaCompra() {
+    const authApi = window.RPMAuth;
+    const usuarioMemoria = authApi && authApi.getUser ? authApi.getUser() : null;
+    const usuarioSessaoReal =
+      authApi && authApi.verifyActiveSession ? await authApi.verifyActiveSession() : null;
+
+    if (
+      !usuarioMemoria ||
+      !usuarioSessaoReal ||
+      usuarioMemoria.id !== usuarioSessaoReal.id ||
+      controleSacola.modo !== "user" ||
+      controleSacola.userIdAtivo !== usuarioSessaoReal.id
+    ) {
+      fecharTodosModais();
+      if (authApi && typeof authApi.openLoginModal === "function") {
+        authApi.openLoginModal({ infoMessage: MENSAGEM_LOGIN_COMPRA });
+      }
+      return null;
+    }
+
+    return usuarioSessaoReal;
+  }
+
+  // Escuta transições de sessão imediatamente (antes mesmo de DOMContentLoaded concluir)
+  window.addEventListener("rpm:auth-sessao", (e) => {
+    const detalhe = (e && e.detail) || {};
+    processarTransicaoSessaoSacola(detalhe.user || null, detalhe.event || "AUTH_CHANGE");
+  });
+
   function adicionarNaSacola(prod, tamanho, cor, qtd, imagemOpcional) {
+    if (controleSacola.modo === "inicializando" || controleSacola.carregandoUserCart) {
+      mostrarToast("Sincronizando sua conta, tente adicionar novamente em um instante...");
+      return;
+    }
+
     const estoqueDisp = window.RpmCatalog
-      ? window.RpmCatalog.getVariantStock(prod.id, cor, tamanho)
+      ? window.RpmCatalog.getVariantStock(prod.slug || prod.id, cor, tamanho)
       : 10;
 
     if (estoqueDisp <= 0) {
@@ -1198,9 +1473,16 @@
       return;
     }
 
-    // Cores ou tamanhos diferentes do mesmo produto são salvos separadamente
-    const uid = `${prod.id}__${tamanho}__${cor}`;
-    const existente = estado.sacola.find((item) => item.uid === uid);
+    const slugSeguro =
+      prod.slug ||
+      String(prod.nome || prod.id)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-");
+    const uid = gerarUidSacola(slugSeguro, tamanho, cor);
+
+    const listaAlvo =
+      controleSacola.modo === "user" ? controleSacola.userCart : controleSacola.guestCart;
+    const existente = listaAlvo.find((item) => item.uid === uid);
     const qtdAtual = existente ? existente.qtd : 0;
 
     if (qtdAtual + qtd > estoqueDisp) {
@@ -1210,25 +1492,36 @@
       return;
     }
 
+    let itemAtualizado;
     if (existente) {
       existente.qtd += qtd;
       existente.preco = prod.preco;
-      existente.slug = prod.slug;
+      existente.slug = slugSeguro;
+      existente.id = prod.id;
+      itemAtualizado = existente;
     } else {
-      estado.sacola.push({
+      itemAtualizado = {
         uid,
         id: prod.id,
-        slug: prod.slug,
+        slug: slugSeguro,
         nome: prod.nome,
         imagem: imagemOpcional || prod.imagem,
         preco: prod.preco,
         tamanho,
         cor,
         qtd
-      });
+      };
+      listaAlvo.push(itemAtualizado);
     }
 
-    salvarSacola();
+    if (controleSacola.modo === "user" && controleSacola.userIdAtivo) {
+      const uidConta = controleSacola.userIdAtivo;
+      const copiaItem = { ...itemAtualizado };
+      enfileirarEscritaSacola(() => salvarItemNaContaSupabase(uidConta, copiaItem));
+    } else {
+      guestStorage.salvar(controleSacola.guestCart);
+    }
+
     renderizarSacola();
     renderizarVitrinesInicio();
     renderizarCatalogo();
@@ -1237,12 +1530,20 @@
   }
 
   function alterarQuantidade(uid, delta) {
-    const idx = estado.sacola.findIndex((i) => i.uid === uid);
+    if (controleSacola.modo === "inicializando" || controleSacola.carregandoUserCart) return;
+
+    const listaAlvo =
+      controleSacola.modo === "user" ? controleSacola.userCart : controleSacola.guestCart;
+    const idx = listaAlvo.findIndex((i) => i.uid === uid);
     if (idx === -1) return;
 
-    const item = estado.sacola[idx];
+    const item = listaAlvo[idx];
     if (delta > 0 && window.RpmCatalog) {
-      const maxEstoque = window.RpmCatalog.getVariantStock(item.id, item.cor, item.tamanho);
+      const maxEstoque = window.RpmCatalog.getVariantStock(
+        item.slug || item.id,
+        item.cor,
+        item.tamanho
+      );
       if (item.qtd + delta > maxEstoque) {
         mostrarToast(`Apenas ${maxEstoque} unidade(s) disponíveis nesta cor e tamanho.`);
         return;
@@ -1250,22 +1551,53 @@
     }
 
     item.qtd += delta;
-    if (item.qtd <= 0) {
-      estado.sacola.splice(idx, 1);
+    const foiRemovido = item.qtd <= 0;
+    if (foiRemovido) {
+      listaAlvo.splice(idx, 1);
     }
-    salvarSacola();
+
+    if (controleSacola.modo === "user" && controleSacola.userIdAtivo) {
+      const uidConta = controleSacola.userIdAtivo;
+      const copiaItem = { ...item };
+      if (foiRemovido) {
+        enfileirarEscritaSacola(() => removerItemDaContaSupabase(uidConta, copiaItem));
+      } else {
+        enfileirarEscritaSacola(() => salvarItemNaContaSupabase(uidConta, copiaItem));
+      }
+    } else {
+      guestStorage.salvar(controleSacola.guestCart);
+    }
+
     renderizarSacola();
   }
 
   function removerItemSacola(uid) {
-    estado.sacola = estado.sacola.filter((i) => i.uid !== uid);
-    salvarSacola();
+    if (controleSacola.modo === "inicializando" || controleSacola.carregandoUserCart) return;
+
+    const listaAlvo =
+      controleSacola.modo === "user" ? controleSacola.userCart : controleSacola.guestCart;
+    const itemAlvo = listaAlvo.find((i) => i.uid === uid);
+    if (!itemAlvo) return;
+
+    if (controleSacola.modo === "user") {
+      controleSacola.userCart = controleSacola.userCart.filter((i) => i.uid !== uid);
+      if (controleSacola.userIdAtivo) {
+        const uidConta = controleSacola.userIdAtivo;
+        const copiaItem = { ...itemAlvo };
+        enfileirarEscritaSacola(() => removerItemDaContaSupabase(uidConta, copiaItem));
+      }
+    } else {
+      controleSacola.guestCart = controleSacola.guestCart.filter((i) => i.uid !== uid);
+      guestStorage.salvar(controleSacola.guestCart);
+    }
+
     renderizarSacola();
   }
 
   function calcularTotaisSacola() {
-    const subtotal = estado.sacola.reduce((acc, item) => acc + item.preco * item.qtd, 0);
-    const qtdTotal = estado.sacola.reduce((acc, item) => acc + item.qtd, 0);
+    const itensVisiveis = obterSacolaVisivel();
+    const subtotal = itensVisiveis.reduce((acc, item) => acc + item.preco * item.qtd, 0);
+    const qtdTotal = itensVisiveis.reduce((acc, item) => acc + item.qtd, 0);
 
     const selectPagamento = document.getElementById("cliente-pagamento");
     const pagandoPix = selectPagamento && selectPagamento.value === "PIX";
@@ -1288,6 +1620,9 @@
   }
 
   function renderizarSacola() {
+    const carregando =
+      controleSacola.modo === "inicializando" || controleSacola.carregandoUserCart;
+    const itensVisiveis = obterSacolaVisivel();
     const totais = calcularTotaisSacola();
 
     const badge = document.getElementById("badge-sacola");
@@ -1295,22 +1630,25 @@
 
     const subtexto = document.getElementById("sacola-contagem-texto");
     if (subtexto) {
-      subtexto.textContent = `${totais.qtdTotal} ${
-        totais.qtdTotal === 1 ? "item selecionado" : "itens selecionados"
-      }`;
+      subtexto.textContent = carregando
+        ? "Sincronizando sacola..."
+        : `${totais.qtdTotal} ${
+            totais.qtdTotal === 1 ? "item selecionado" : "itens selecionados"
+          }`;
     }
 
     const barraContainer = document.getElementById("barra-frete-container");
     const textoFrete = document.getElementById("texto-progresso-frete");
     const barraFill = document.getElementById("preenchimento-frete");
 
-    if (barraContainer && totais.metaFrete > 0) {
+    if (barraContainer && totais.metaFrete > 0 && !carregando) {
       barraContainer.classList.remove("hidden");
       const progresso = Math.min(100, (totais.subtotal / totais.metaFrete) * 100);
       if (barraFill) barraFill.style.width = `${progresso}%`;
 
       if (totais.ganhouFreteGratis) {
-        textoFrete.innerHTML = "🎉 Parabéns! Você ganhou <strong>Frete Grátis</strong> neste pedido!";
+        textoFrete.innerHTML =
+          "🎉 Parabéns! Você ganhou <strong>Frete Grátis</strong> neste pedido!";
       } else {
         const falta = totais.metaFrete - totais.subtotal;
         textoFrete.innerHTML = `Faltam <strong>${formatarMoeda(
@@ -1321,12 +1659,32 @@
       barraContainer.classList.add("hidden");
     }
 
+    const carregandoEl = document.getElementById("sacola-carregando");
     const vaziaEl = document.getElementById("sacola-vazia");
     const cheioEl = document.getElementById("sacola-conteudo-cheio");
     const rodapeEl = document.getElementById("sacola-rodape");
     const listaEl = document.getElementById("lista-itens-sacola");
+    const checkoutBoxEl = document.getElementById("checkout-form-box");
 
-    if (estado.sacola.length === 0) {
+    // Formulário de checkout só fica visível quando há conta autenticada ativa
+    if (checkoutBoxEl) {
+      checkoutBoxEl.classList.toggle("hidden", controleSacola.modo !== "user" || carregando);
+    }
+
+    // Enquanto carrega sacola da conta, NUNCA exibe guestCart nem dados anteriores no DOM
+    if (carregando) {
+      if (listaEl) listaEl.innerHTML = "";
+      if (carregandoEl) carregandoEl.classList.remove("hidden");
+      if (vaziaEl) vaziaEl.classList.add("hidden");
+      if (cheioEl) cheioEl.classList.add("hidden");
+      if (rodapeEl) rodapeEl.classList.add("hidden");
+      return;
+    }
+
+    if (carregandoEl) carregandoEl.classList.add("hidden");
+
+    if (itensVisiveis.length === 0) {
+      if (listaEl) listaEl.innerHTML = "";
       vaziaEl.classList.remove("hidden");
       cheioEl.classList.add("hidden");
       rodapeEl.classList.add("hidden");
@@ -1337,7 +1695,7 @@
     cheioEl.classList.remove("hidden");
     rodapeEl.classList.remove("hidden");
 
-    listaEl.innerHTML = estado.sacola
+    listaEl.innerHTML = itensVisiveis
       .map(
         (item) => `
         <li class="cart-item">
@@ -1407,7 +1765,13 @@
   }
 
   async function finalizarPedidoWhatsApp() {
-    if (estado.sacola.length === 0 || estado.validandoCheckout) return;
+    if (estado.validandoCheckout) return;
+
+    // OBRIGATORIEDADE DE LOGIN PARA COMPRAR: visitantes são direcionados ao pop-up de login
+    const usuarioAutenticado = await exigirAutenticacaoParaCompra();
+    if (!usuarioAutenticado) return;
+
+    if (controleSacola.carregandoUserCart || controleSacola.userCart.length === 0) return;
 
     const nomeInput = document.getElementById("cliente-nome");
     const nome = (nomeInput ? nomeInput.value : "").trim();
@@ -1428,13 +1792,25 @@
       }
 
       try {
-        const revisao = await window.RpmCatalog.revalidateCart(estado.sacola);
-        estado.sacola = revisao.itensAtualizados;
-        salvarSacola();
+        const snapshotAntes = [...controleSacola.userCart];
+        const revisao = await window.RpmCatalog.revalidateCart(controleSacola.userCart);
+        const itensNormalizados = revisao.itensAtualizados.map((item) => ({
+          ...item,
+          uid: gerarUidSacola(item.slug || item.id, item.tamanho, item.cor)
+        }));
+
+        controleSacola.userCart = itensNormalizados;
+        await sincronizarListaCompletaNaContaSupabase(
+          usuarioAutenticado.id,
+          snapshotAntes,
+          itensNormalizados
+        );
         renderizarSacola();
 
         if (!revisao.valido) {
-          mostrarToast(revisao.alteracoes[0] || "Alguns itens na sacola sofreram alteração de estoque.");
+          mostrarToast(
+            revisao.alteracoes[0] || "Alguns itens na sacola sofreram alteração de estoque."
+          );
           return;
         }
       } finally {
@@ -1446,7 +1822,7 @@
       }
     }
 
-    if (estado.sacola.length === 0) return;
+    if (controleSacola.userCart.length === 0) return;
 
     const entrega = document.getElementById("cliente-entrega").value;
     const cep = document.getElementById("cliente-cep").value.trim();
@@ -1454,7 +1830,7 @@
     const obs = document.getElementById("cliente-obs").value.trim();
     const totais = calcularTotaisSacola();
 
-    const linhasItens = estado.sacola.map(
+    const linhasItens = controleSacola.userCart.map(
       (item) =>
         `• ${item.qtd}x *${item.nome}*\n  Cor: ${item.cor} | Tam: ${
           item.tamanho

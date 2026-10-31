@@ -328,6 +328,27 @@
   // ==========================================================================
   // 5. POP-UP UNIFICADO DE LOGIN (GOOGLE + USUÁRIO/SENHA ADMIN)
   // ==========================================================================
+  const TEXTO_PADRAO_MODAL_LOGIN = "Entre na sua conta para continuar.";
+
+  function exibirAvisoNoModal(mensagemAviso) {
+    const boxAviso = document.getElementById("login-aviso-box");
+    const descModal = document.getElementById("desc-modal-login");
+
+    if (descModal) {
+      descModal.textContent = TEXTO_PADRAO_MODAL_LOGIN;
+      descModal.classList.toggle("hidden", Boolean(mensagemAviso));
+    }
+
+    if (!boxAviso) return;
+    if (!mensagemAviso) {
+      boxAviso.textContent = "";
+      boxAviso.classList.add("hidden");
+      return;
+    }
+    boxAviso.textContent = mensagemAviso;
+    boxAviso.classList.remove("hidden");
+  }
+
   function exibirErroNoModal(mensagem) {
     const boxErro = document.getElementById("login-erro-box");
     if (!boxErro) return;
@@ -381,13 +402,23 @@
     if (inputPass) inputPass.disabled = processando;
   }
 
-  function abrirModalLogin(mensagemErroOpcional) {
+  function abrirModalLogin(opcoesOuErro) {
     const modal = document.getElementById("modal-login");
     if (!modal) return;
 
+    let msgErro = "";
+    let msgAviso = "";
+    if (typeof opcoesOuErro === "string") {
+      msgErro = opcoesOuErro;
+    } else if (opcoesOuErro && typeof opcoesOuErro === "object") {
+      msgAviso = opcoesOuErro.infoMessage || "";
+      msgErro = opcoesOuErro.errorMessage || "";
+    }
+
     fecharMenuUsuario();
     definirEstadoProcessando(false);
-    exibirErroNoModal(mensagemErroOpcional || "");
+    exibirAvisoNoModal(msgAviso);
+    exibirErroNoModal(msgErro);
 
     modal.classList.remove("hidden");
     document.body.style.overflow = "hidden";
@@ -399,6 +430,7 @@
 
     modal.classList.add("hidden");
     definirEstadoProcessando(false);
+    exibirAvisoNoModal("");
     exibirErroNoModal("");
 
     const inputSenha = document.getElementById("input-admin-senha");
@@ -574,7 +606,16 @@
       estadoAuth.adminUsername = null;
       estadoAuth.isAdmin = false;
       estadoAuth.ultimoUserIdSincronizado = null;
+
+      ["cliente-nome", "cliente-cep", "cliente-obs"].forEach((idCampo) => {
+        const el = document.getElementById(idCampo);
+        if (el) el.value = "";
+      });
+
       atualizarCabecalhoAutenticacao();
+      window.dispatchEvent(
+        new CustomEvent("rpm:auth-sessao", { detail: { user: null, event: "SIGNED_OUT" } })
+      );
       window.dispatchEvent(new CustomEvent("rpm:usuario-deslogado"));
       notificarLoja("Você saiu da sua conta.");
     } catch (_) {
@@ -585,6 +626,11 @@
   async function processarMudancaDeSessao(session, evento) {
     const novoUsuario = session && session.user ? session.user : null;
     estadoAuth.usuario = novoUsuario;
+
+    // Notifica imediatamente o controlador da sacola para troca atômica (guestCart vs userCart)
+    window.dispatchEvent(
+      new CustomEvent("rpm:auth-sessao", { detail: { user: novoUsuario, event: evento } })
+    );
 
     if (!novoUsuario) {
       estadoAuth.perfil = null;
@@ -700,6 +746,9 @@
     const supabase = window.getRpmSupabaseClient && window.getRpmSupabaseClient();
 
     if (!supabase) {
+      window.dispatchEvent(
+        new CustomEvent("rpm:auth-sessao", { detail: { user: null, event: "INITIAL_SESSION" } })
+      );
       if (erroRetornoUrl) abrirModalLogin(erroRetornoUrl);
       return;
     }
@@ -715,7 +764,9 @@
       const { data } = await supabase.auth.getSession();
       await processarMudancaDeSessao(data ? data.session : null, "INITIAL_SESSION");
     } catch (_) {
-      // Mantém visitante deslogado com segurança
+      window.dispatchEvent(
+        new CustomEvent("rpm:auth-sessao", { detail: { user: null, event: "INITIAL_SESSION" } })
+      );
     } finally {
       if (erroRetornoUrl) {
         limparParametrosOAuthDaUrl();
@@ -726,6 +777,18 @@
     }
   }
 
+  async function verificarSessaoAtivaReal() {
+    const supabase = window.getRpmSupabaseClient && window.getRpmSupabaseClient();
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error || !data || !data.session || !data.session.user) return null;
+      return data.session.user;
+    } catch (_) {
+      return null;
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", inicializarSistemaAutenticacao);
 
   window.RPMAuth = Object.freeze({
@@ -733,6 +796,8 @@
     openLoginModal: abrirModalLogin,
     closeLoginModal: fecharModalLogin,
     getUser: () => estadoAuth.usuario,
+    isAuthenticated: () => Boolean(estadoAuth.usuario && estadoAuth.usuario.id),
+    verifyActiveSession: verificarSessaoAtivaReal,
     getProfile: () => estadoAuth.perfil,
     getAdminUsername: () => estadoAuth.adminUsername,
     isAdminVerified: () => Boolean(estadoAuth.isAdmin),
