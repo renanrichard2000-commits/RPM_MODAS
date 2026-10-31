@@ -1,6 +1,8 @@
 /**
- * LÓGICA DA LOJA RPM MODAS — 3 ABAS EM PÁGINA ÚNICA (INÍCIO, CATÁLOGO, CONTATO)
- * + PESQUISA RÁPIDA + FILTROS + SACOLA E PEDIDO NO WHATSAPP
+ * ============================================================================
+ * LÓGICA DA LOJA RPM MODAS — VITRINE DINÂMICA SUPABASE + PÁGINAS INDIVIDUAIS
+ * (/RPM_MODAS/produto/<slug>) + FILTROS + SACOLA COM ESTOQUE POR COR/TAMANHO
+ * ============================================================================
  */
 (function () {
   "use strict";
@@ -25,20 +27,31 @@
 
   const estado = {
     abaAtual: "inicio",
+    slugProdutoAberto: null,
     sacola: storage.get("rpm_sacola_v1", []),
     selecaoTamanhoCard: {},
+    selecaoCorCard: {},
     busca: "",
     categoriaAtiva: "Todas",
     tamanhoFiltro: "Todos",
     precoFiltro: "todos",
-    ordenacao: "destaques"
+    ordenacao: "destaques",
+    validandoCheckout: false
   };
 
   function formatarMoeda(valor) {
-    return valor.toLocaleString("pt-BR", {
+    return Number(valor || 0).toLocaleString("pt-BR", {
       style: "currency",
       currency: "BRL"
     });
+  }
+
+  function escaparHtml(str) {
+    return String(str ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 
   function limparNumeroWhatsApp(num) {
@@ -50,6 +63,14 @@
     return `https://wa.me/${fone}?text=${encodeURIComponent(mensagem)}`;
   }
 
+  function obterProdutosPublicados() {
+    if (window.RpmCatalog && typeof window.RpmCatalog.getPublishedProducts === "function") {
+      const lista = window.RpmCatalog.getPublishedProducts();
+      if (Array.isArray(lista)) return lista;
+    }
+    return DADOS_LOJA.produtos || [];
+  }
+
   let toastTimer = null;
   function mostrarToast(texto) {
     const el = document.getElementById("toast");
@@ -59,28 +80,23 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
       el.classList.add("hidden");
-    }, 3000);
+    }, 3400);
   }
 
   // ==========================================================================
-  // 1. NAVEGAÇÃO ENTRE AS 3 ABAS (INÍCIO, CATÁLOGO, CONTATO)
+  // 1. NAVEGAÇÃO ENTRE ABAS E ROTAS LIMPAS (/RPM_MODAS/produto/<slug>)
   // ==========================================================================
-  function navegarParaAba(nomeAba, rolarTopo = true) {
-    const abasValidas = ["inicio", "catalogo", "contato"];
-    const destino = abasValidas.includes(nomeAba) ? nomeAba : "inicio";
-    estado.abaAtual = destino;
-
-    abasValidas.forEach((aba) => {
-      const secao = document.getElementById(`aba-${aba}`);
-      if (secao) {
-        secao.classList.toggle("hidden", aba !== destino);
-      }
+  function ocultarSecoesPrincipais() {
+    ["aba-inicio", "aba-catalogo", "aba-contato", "aba-produto", "aba-admin"].forEach((id) => {
+      const sec = document.getElementById(id);
+      if (sec) sec.classList.add("hidden");
     });
+  }
 
-    // Atualiza estado ativo nos botões do cabeçalho e menu mobile
+  function marcarAbaMenuAtiva(abaOuNull) {
     document.querySelectorAll(".tab-nav-btn, .mobile-tab-btn").forEach((btn) => {
       const alvo = btn.getAttribute("data-aba-link");
-      const ativo = alvo === destino;
+      const ativo = Boolean(abaOuNull && alvo === abaOuNull);
       btn.classList.toggle("active", ativo);
       if (ativo) {
         btn.setAttribute("aria-current", "page");
@@ -88,13 +104,32 @@
         btn.removeAttribute("aria-current");
       }
     });
+  }
 
-    if (!window.RPMAuth || !window.RPMAuth.hasOAuthCallbackInUrl()) {
+  function navegarParaAba(nomeAba, opcoes = {}) {
+    const { rolarTopo = true, pushHistory = true } =
+      typeof opcoes === "boolean" ? { rolarTopo: opcoes, pushHistory: true } : opcoes;
+
+    const abasValidas = ["inicio", "catalogo", "contato"];
+    const destino = abasValidas.includes(nomeAba) ? nomeAba : "inicio";
+
+    estado.abaAtual = destino;
+    estado.slugProdutoAberto = null;
+    document.title = `${DADOS_LOJA.nomeLoja} | ${DADOS_LOJA.subtituloLogo}`;
+
+    if (window.RPMAdmin) window.RPMAdmin.closePanel();
+    ocultarSecoesPrincipais();
+
+    const secaoDestino = document.getElementById(`aba-${destino}`);
+    if (secaoDestino) secaoDestino.classList.remove("hidden");
+    marcarAbaMenuAtiva(destino);
+
+    if (pushHistory && (!window.RPMAuth || !window.RPMAuth.hasOAuthCallbackInUrl())) {
       try {
-        window.history.replaceState(null, "", `#${destino}`);
-      } catch (_) {
-        // Ignora em ambientes sem histórico
-      }
+        const urlRaiz = window.buildRpmRouteUrl ? window.buildRpmRouteUrl("") : "./";
+        const hashSufixo = destino === "inicio" ? "" : `#${destino}`;
+        window.history.pushState({ view: "tab", tab: destino }, "", `${urlRaiz}${hashSufixo}`);
+      } catch (_) {}
     }
 
     if (rolarTopo) {
@@ -103,17 +138,511 @@
   }
 
   // ==========================================================================
-  // 2. PREENCHIMENTO DOS DADOS DA MARCA (RPM MODAS)
+  // 2. PÁGINA INDIVIDUAL DE CADA ROUPA (/RPM_MODAS/produto/<slug>)
+  // ==========================================================================
+  function abrirPaginaProduto(slugOuId, opcoes = {}) {
+    const { rolarTopo = true, pushHistory = true } = opcoes;
+
+    fecharTodosModais();
+    if (window.RPMAdmin) window.RPMAdmin.closePanel();
+    ocultarSecoesPrincipais();
+    marcarAbaMenuAtiva("catalogo");
+
+    const secProduto = document.getElementById("aba-produto");
+    const container = document.getElementById("conteudo-pagina-produto");
+    if (!secProduto || !container) return;
+
+    secProduto.classList.remove("hidden");
+
+    const prod =
+      window.RpmCatalog && window.RpmCatalog.getProductBySlugOrId
+        ? window.RpmCatalog.getProductBySlugOrId(slugOuId)
+        : obterProdutosPublicados().find(
+            (p) => p.slug === slugOuId || String(p.id) === String(slugOuId)
+          );
+
+    // Caso o produto tenha sido removido, arquivado ou despublicado, impede compra
+    if (!prod || prod.status !== "published") {
+      estado.slugProdutoAberto = String(slugOuId || "");
+      document.title = `Peça Indisponível | ${DADOS_LOJA.nomeLoja}`;
+
+      if (pushHistory && slugOuId) {
+        try {
+          window.history.pushState(
+            { view: "produto", slug: slugOuId },
+            "",
+            window.buildRpmRouteUrl(`produto/${encodeURIComponent(slugOuId)}`)
+          );
+        } catch (_) {}
+      }
+
+      container.innerHTML = `
+        <div class="product-unavailable-card">
+          <span class="eyebrow">CATÁLOGO RPM MODAS</span>
+          <h1>Esta peça não está disponível no momento</h1>
+          <p>
+            A roupa que você tentou acessar foi despublicada, encerrada ou está temporariamente indisponível para compra.
+          </p>
+          <div class="unavailable-actions">
+            <button type="button" class="btn btn-primary" id="btn-voltar-cat-indisp">
+              Explorar Catálogo Atualizado
+            </button>
+            <button type="button" class="btn btn-outline" id="btn-voltar-home-indisp">
+              Ir para o Início
+            </button>
+          </div>
+        </div>
+      `;
+
+      document.getElementById("btn-voltar-cat-indisp").addEventListener("click", () => {
+        navegarParaAba("catalogo");
+      });
+      document.getElementById("btn-voltar-home-indisp").addEventListener("click", () => {
+        navegarParaAba("inicio");
+      });
+
+      if (rolarTopo) window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    estado.abaAtual = "produto";
+    estado.slugProdutoAberto = prod.slug;
+    document.title = `${prod.nome} | ${DADOS_LOJA.nomeLoja}`;
+
+    if (pushHistory) {
+      try {
+        const urlProduto = window.buildRpmRouteUrl(`produto/${prod.slug}`);
+        if (window.location.pathname !== urlProduto) {
+          window.history.pushState({ view: "produto", slug: prod.slug }, "", urlProduto);
+        }
+      } catch (_) {}
+    }
+
+    const galeria =
+      prod.imagens && prod.imagens.length
+        ? prod.imagens
+        : [{ id: "main", url: prod.imagem, colorName: null }];
+
+    const coresDisp = prod.cores && prod.cores.length ? prod.cores : [];
+    const tamanhosDisp = prod.tamanhos && prod.tamanhos.length ? prod.tamanhos : [];
+
+    // Escolhe inicialmente uma cor que possua estoque > 0, se houver
+    let corEscolhida =
+      estado.selecaoCorCard[prod.id] && coresDisp.includes(estado.selecaoCorCard[prod.id])
+        ? estado.selecaoCorCard[prod.id]
+        : coresDisp.find((c) => window.RpmCatalog.hasColorAnyStock(prod.id, c)) ||
+          coresDisp[0] ||
+          "";
+
+    function obterPrimeiroTamanhoComEstoque(cor) {
+      return (
+        tamanhosDisp.find((t) => window.RpmCatalog.getVariantStock(prod.id, cor, t) > 0) ||
+        tamanhosDisp[0] ||
+        ""
+      );
+    }
+
+    let tamEscolhido =
+      estado.selecaoTamanhoCard[prod.id] &&
+      tamanhosDisp.includes(estado.selecaoTamanhoCard[prod.id]) &&
+      window.RpmCatalog.getVariantStock(prod.id, corEscolhida, estado.selecaoTamanhoCard[prod.id]) > 0
+        ? estado.selecaoTamanhoCard[prod.id]
+        : obterPrimeiroTamanhoComEstoque(corEscolhida);
+
+    let indiceFotoAtiva = 0;
+
+    function renderizarPaginaInterna() {
+      const percPix = DADOS_LOJA.descontoPixPercentual || 0;
+      const precoPix = prod.preco * (1 - percPix / 100);
+      const parcelas = prod.parcelasMax || DADOS_LOJA.parcelasSemJuros || 3;
+      const isOferta = Boolean(prod.precoAntigo && prod.precoAntigo > prod.preco);
+      const percDesconto = isOferta
+        ? Math.round(((prod.precoAntigo - prod.preco) / prod.precoAntigo) * 100)
+        : 0;
+
+      const estoqueAtual =
+        corEscolhida && tamEscolhido
+          ? window.RpmCatalog.getVariantStock(prod.id, corEscolhida, tamEscolhido)
+          : 0;
+      const podeComprar = !prod.esgotadoGeral && Boolean(corEscolhida && tamEscolhido && estoqueAtual > 0);
+
+      const fotoPrincipal = galeria[indiceFotoAtiva] ? galeria[indiceFotoAtiva].url : prod.imagem;
+
+      // Produtos relacionados para navegação direta entre peças
+      const relacionados = obterProdutosPublicados()
+        .filter((item) => String(item.id) !== String(prod.id))
+        .sort((a, b) => Number(b.categoria === prod.categoria) - Number(a.categoria === prod.categoria))
+        .slice(0, 4);
+
+      container.innerHTML = `
+        <nav class="product-breadcrumb" aria-label="Localização">
+          <button type="button" class="crumb-link" id="crumb-inicio">Início</button>
+          <span>/</span>
+          <button type="button" class="crumb-link" id="crumb-catalogo">Catálogo</button>
+          <span>/</span>
+          <button type="button" class="crumb-link" id="crumb-categoria">${escaparHtml(
+            prod.categoria
+          )}</button>
+          <span>/</span>
+          <span class="crumb-current">${escaparHtml(prod.nome)}</span>
+        </nav>
+
+        <div class="product-detail-layout">
+          <!-- GALERIA DE FOTOS -->
+          <div class="product-gallery-col">
+            <div class="product-main-photo-wrap">
+              <img src="${escaparHtml(fotoPrincipal)}" alt="${escaparHtml(
+        prod.nome
+      )}" id="img-principal-pagina-prod" />
+              ${
+                isOferta
+                  ? `<span class="product-badge sale">-${percDesconto}% OFF</span>`
+                  : prod.destaque
+                  ? `<span class="product-badge">${escaparHtml(prod.destaque)}</span>`
+                  : ""
+              }
+            </div>
+
+            ${
+              galeria.length > 1
+                ? `
+              <div class="product-thumbs-row" role="list" aria-label="Miniaturas da peça">
+                ${galeria
+                  .map(
+                    (img, idx) => `
+                  <button
+                    type="button"
+                    class="product-thumb-btn ${idx === indiceFotoAtiva ? "active" : ""}"
+                    data-thumb-idx="${idx}"
+                    aria-label="Ver foto ${idx + 1}"
+                  >
+                    <img src="${escaparHtml(img.url)}" alt="${escaparHtml(prod.nome)} - foto ${
+                      idx + 1
+                    }" />
+                  </button>
+                `
+                  )
+                  .join("")}
+              </div>
+            `
+                : ""
+            }
+          </div>
+
+          <!-- INFORMAÇÕES E COMPRA -->
+          <div class="product-buy-col">
+            <div class="product-top-meta">
+              <span class="eyebrow">${escaparHtml(prod.categoria)}</span>
+              <button type="button" class="share-link-btn" id="btn-compartilhar-peca" title="Copiar link direto desta roupa">
+                🔗 Compartilhar link
+              </button>
+            </div>
+
+            <h1 class="product-page-title">${escaparHtml(prod.nome)}</h1>
+
+            <div class="product-page-price-box">
+              <div class="price-main-line">
+                ${
+                  isOferta
+                    ? `<span class="old-price">${formatarMoeda(prod.precoAntigo)}</span>`
+                    : ""
+                }
+                <span class="current-price product-big-price">${formatarMoeda(prod.preco)}</span>
+              </div>
+              ${
+                percPix > 0
+                  ? `<div class="pix-price-hint">${formatarMoeda(
+                      precoPix
+                    )} no PIX (${percPix}% de desconto imediato)</div>`
+                  : ""
+              }
+              <div class="installment-hint">
+                ou em até <strong>${parcelas}x de ${formatarMoeda(
+        prod.preco / parcelas
+      )}</strong> sem juros no cartão
+              </div>
+            </div>
+
+            <p class="product-page-description">${escaparHtml(prod.descricao)}</p>
+
+            ${
+              prod.tecido
+                ? `<div class="modal-fabric-box"><strong>Tecido, modelagem &amp; detalhes:</strong> ${escaparHtml(
+                    prod.tecido
+                  )}</div>`
+                : ""
+            }
+
+            <!-- SELETOR DE CORES -->
+            ${
+              coresDisp.length > 0
+                ? `
+              <div class="selector-group">
+                <div class="selector-header">
+                  <span>Cor selecionada: <strong>${escaparHtml(corEscolhida)}</strong></span>
+                </div>
+                <div class="color-chips">
+                  ${(prod.coresDetalhes || coresDisp.map((n) => ({ name: n, hex: "#231b16" })))
+                    .map((cObj) => {
+                      const corTemEstoque = window.RpmCatalog.hasColorAnyStock(
+                        prod.id,
+                        cObj.name
+                      );
+                      return `
+                      <button
+                        type="button"
+                        class="color-chip ${corEscolhida === cObj.name ? "selected" : ""} ${
+                        !corTemEstoque ? "color-out" : ""
+                      }"
+                        data-pag-cor="${escaparHtml(cObj.name)}"
+                      >
+                        <span class="color-dot-inline" style="background:${escaparHtml(
+                          cObj.hex
+                        )}"></span>
+                        <span>${escaparHtml(cObj.name)}</span>
+                      </button>
+                    `;
+                    })
+                    .join("")}
+                </div>
+              </div>
+            `
+                : ""
+            }
+
+            <!-- SELETOR DE TAMANHOS COM ESTOQUE REAL POR COR -->
+            ${
+              tamanhosDisp.length > 0
+                ? `
+              <div class="selector-group">
+                <div class="selector-header">
+                  <span>Tamanho: <strong>${escaparHtml(tamEscolhido || "Selecione")}</strong></span>
+                  <button type="button" class="text-btn" id="btn-medidas-pagina-prod">📏 Guia de Medidas</button>
+                </div>
+                <div class="size-chips">
+                  ${tamanhosDisp
+                    .map((tam) => {
+                      const qtdComb = window.RpmCatalog.getVariantStock(
+                        prod.id,
+                        corEscolhida,
+                        tam
+                      );
+                      const esgotadoTam = qtdComb <= 0;
+                      return `
+                      <button
+                        type="button"
+                        class="size-chip ${tamEscolhido === tam ? "selected" : ""} ${
+                        esgotadoTam ? "sold-out" : ""
+                      }"
+                        data-pag-tam="${escaparHtml(tam)}"
+                        ${esgotadoTam ? 'disabled title="Tamanho esgotado nesta cor"' : ""}
+                      >
+                        ${escaparHtml(tam)}${esgotadoTam ? " (Esgotado)" : ""}
+                      </button>
+                    `;
+                    })
+                    .join("")}
+                </div>
+              </div>
+            `
+                : ""
+            }
+
+            <!-- INDICADOR DE DISPONIBILIDADE EM TEMPO REAL -->
+            <div class="variant-stock-banner ${
+              podeComprar ? (estoqueAtual <= 3 ? "low" : "ok") : "out"
+            }">
+              ${
+                prod.esgotadoGeral
+                  ? "✕ Peça temporariamente esgotada em todas as cores e tamanhos."
+                  : podeComprar
+                  ? estoqueAtual <= 3
+                    ? `🔥 Últimas ${estoqueAtual} unidade(s) disponíveis em ${escaparHtml(
+                        corEscolhida
+                      )} (${escaparHtml(tamEscolhido)})!`
+                    : `✓ Em estoque para envio imediato (${estoqueAtual} un. disponíveis nesta combinação)`
+                  : `✕ Combinação ${escaparHtml(corEscolhida)} • ${escaparHtml(
+                      tamEscolhido || "—"
+                    )} esgotada. Escolha outra opção disponível.`
+              }
+            </div>
+
+            <div class="modal-actions-stack">
+              <button
+                type="button"
+                class="btn btn-primary btn-block"
+                id="btn-pagina-add-sacola"
+                ${!podeComprar ? "disabled" : ""}
+              >
+                ${
+                  podeComprar
+                    ? `Adicionar à Sacola • ${formatarMoeda(prod.preco)}`
+                    : "Indisponível para Compra"
+                }
+              </button>
+
+              ${
+                podeComprar
+                  ? `
+                <button type="button" class="btn btn-whatsapp btn-block" id="btn-pagina-comprar-wa">
+                  Comprar esta peça direto no WhatsApp
+                </button>
+              `
+                  : ""
+              }
+            </div>
+          </div>
+        </div>
+
+        ${
+          relacionados.length > 0
+            ? `
+          <div class="related-products-section">
+            <div class="section-header">
+              <div>
+                <span class="eyebrow">CONTINUE EXPLORANDO</span>
+                <h2>Você também pode amar</h2>
+              </div>
+              <button type="button" class="btn-link-arrow" id="btn-rel-ver-catalogo">
+                Ver catálogo completo →
+              </button>
+            </div>
+            <div class="products-grid" id="grade-relacionados-produto">
+              ${relacionados.map(montarHtmlCardProduto).join("")}
+            </div>
+          </div>
+        `
+            : ""
+        }
+      `;
+
+      // Eventos de navegação breadcrumb
+      document.getElementById("crumb-inicio").addEventListener("click", () => navegarParaAba("inicio"));
+      document
+        .getElementById("crumb-catalogo")
+        .addEventListener("click", () => navegarParaAba("catalogo"));
+      document.getElementById("crumb-categoria").addEventListener("click", () => {
+        limparTodosOsFiltros();
+        estado.categoriaAtiva = prod.categoria;
+        renderizarPillsCategorias();
+        renderizarCatalogo();
+        navegarParaAba("catalogo");
+      });
+
+      const btnVerCatRel = document.getElementById("btn-rel-ver-catalogo");
+      if (btnVerCatRel) {
+        btnVerCatRel.addEventListener("click", () => navegarParaAba("catalogo"));
+      }
+
+      // Compartilhar link direto da página individual
+      document.getElementById("btn-compartilhar-peca").addEventListener("click", async () => {
+        const urlCompleta = `${window.location.origin}${window.buildRpmRouteUrl(
+          `produto/${prod.slug}`
+        )}`;
+        try {
+          await navigator.clipboard.writeText(urlCompleta);
+          mostrarToast("✓ Link da roupa copiado para compartilhar!");
+        } catch (_) {
+          mostrarToast(urlCompleta);
+        }
+      });
+
+      // Miniaturas da galeria
+      container.querySelectorAll("[data-thumb-idx]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          indiceFotoAtiva = Number(btn.getAttribute("data-thumb-idx") || 0);
+          renderizarPaginaInterna();
+        });
+      });
+
+      // Troca de cor (troca foto correspondente se associada e valida tamanho com estoque)
+      container.querySelectorAll("[data-pag-cor]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          corEscolhida = btn.getAttribute("data-pag-cor");
+          estado.selecaoCorCard[prod.id] = corEscolhida;
+
+          const idxFotoDaCor = galeria.findIndex(
+            (img) =>
+              img.colorName && img.colorName.toLowerCase() === corEscolhida.toLowerCase()
+          );
+          if (idxFotoDaCor >= 0) indiceFotoAtiva = idxFotoDaCor;
+
+          if (window.RpmCatalog.getVariantStock(prod.id, corEscolhida, tamEscolhido) <= 0) {
+            tamEscolhido = obterPrimeiroTamanhoComEstoque(corEscolhida);
+          }
+
+          renderizarPaginaInterna();
+        });
+      });
+
+      // Troca de tamanho
+      container.querySelectorAll("[data-pag-tam]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const novoTam = btn.getAttribute("data-pag-tam");
+          if (window.RpmCatalog.getVariantStock(prod.id, corEscolhida, novoTam) <= 0) {
+            mostrarToast("Este tamanho está esgotado na cor selecionada.");
+            return;
+          }
+          tamEscolhido = novoTam;
+          estado.selecaoTamanhoCard[prod.id] = tamEscolhido;
+          renderizarPaginaInterna();
+        });
+      });
+
+      const btnGuia = document.getElementById("btn-medidas-pagina-prod");
+      if (btnGuia) {
+        btnGuia.addEventListener("click", () => {
+          abrirCamada(document.getElementById("modal-medidas"));
+        });
+      }
+
+      const btnAdd = document.getElementById("btn-pagina-add-sacola");
+      if (btnAdd && podeComprar) {
+        btnAdd.addEventListener("click", () => {
+          adicionarNaSacola(prod, tamEscolhido, corEscolhida, 1, fotoPrincipal);
+        });
+      }
+
+      const btnComprarWa = document.getElementById("btn-pagina-comprar-wa");
+      if (btnComprarWa && podeComprar) {
+        btnComprarWa.addEventListener("click", () => {
+          const urlDireta = `${window.location.origin}${window.buildRpmRouteUrl(
+            `produto/${prod.slug}`
+          )}`;
+          const msg = [
+            `Olá! Vim pelo site da *${DADOS_LOJA.nomeLoja}* e gostaria de comprar esta peça: ✨`,
+            "",
+            `• *${prod.nome}*`,
+            `  Cor: *${corEscolhida}* | Tamanho: *${tamEscolhido}*`,
+            `  Valor: ${formatarMoeda(prod.preco)} (${formatarMoeda(precoPix)} no PIX)`,
+            `  Link: ${urlDireta}`,
+            "",
+            "Poderia confirmar para finalizarmos?"
+          ].join("\n");
+          exibirConfirmacaoPedido(msg);
+        });
+      }
+
+      conectarEventosDeGrade(document.getElementById("grade-relacionados-produto"));
+    }
+
+    renderizarPaginaInterna();
+    if (rolarTopo) window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // ==========================================================================
+  // 3. PREENCHIMENTO DOS DADOS DA MARCA (RPM MODAS)
   // ==========================================================================
   function preencherDadosDaLoja() {
-    document.title = `${DADOS_LOJA.nomeLoja} | ${DADOS_LOJA.subtituloLogo}`;
+    if (estado.abaAtual !== "produto") {
+      document.title = `${DADOS_LOJA.nomeLoja} | ${DADOS_LOJA.subtituloLogo}`;
+    }
 
     const setTexto = (id, valor) => {
       const el = document.getElementById(id);
       if (el && valor) el.textContent = valor;
     };
 
-    // Nome e subtítulo em todos os pontos
     setTexto("header-nome-loja", DADOS_LOJA.nomeLoja);
     setTexto("header-sub-loja", DADOS_LOJA.subtituloLogo);
     setTexto("mobile-nome-loja", DADOS_LOJA.nomeLoja);
@@ -123,12 +652,10 @@
     setTexto("copy-nome-loja", DADOS_LOJA.nomeLoja);
     setTexto("copy-sub-loja", DADOS_LOJA.subtituloLogo);
 
-    // Hero da aba Início
     setTexto("hero-tag", DADOS_LOJA.tagColecao);
     setTexto("hero-titulo", DADOS_LOJA.sloganHero);
     setTexto("hero-descricao", DADOS_LOJA.descricaoHero);
 
-    // Aba Contato & Rodapé
     setTexto("contato-numero-wa", DADOS_LOJA.whatsappExibicao);
     setTexto("contato-arroba-insta", DADOS_LOJA.instagram);
     setTexto("contato-horario", DADOS_LOJA.horarioAtendimento);
@@ -149,7 +676,6 @@
       footerInsta.href = DADOS_LOJA.urlInstagram || "https://instagram.com/";
     }
 
-    // Barra de avisos no topo
     const topbar = document.getElementById("topbar-avisos");
     if (topbar && Array.isArray(DADOS_LOJA.avisosTopo) && DADOS_LOJA.avisosTopo.length) {
       topbar.innerHTML = DADOS_LOJA.avisosTopo
@@ -157,7 +683,6 @@
         .join('<span class="topbar-sep">•</span>');
     }
 
-    // Tabela de medidas
     const tbody = document.getElementById("corpo-tabela-medidas");
     if (tbody && Array.isArray(DADOS_LOJA.tabelaMedidas)) {
       tbody.innerHTML = DADOS_LOJA.tabelaMedidas
@@ -177,11 +702,22 @@
   }
 
   // ==========================================================================
-  // 3. GERADOR DE CARDS DE PRODUTOS (USADO NO INÍCIO E NO CATÁLOGO)
+  // 4. GERADOR DE CARDS DE PRODUTOS (INÍCIO, CATÁLOGO E RELACIONADOS)
   // ==========================================================================
   function montarHtmlCardProduto(prod) {
     const percPix = DADOS_LOJA.descontoPixPercentual || 0;
-    const parcelas = DADOS_LOJA.parcelasSemJuros || 3;
+    const parcelas = prod.parcelasMax || DADOS_LOJA.parcelasSemJuros || 3;
+
+    const coresProd = prod.cores || [];
+    const corCard =
+      estado.selecaoCorCard[prod.id] && coresProd.includes(estado.selecaoCorCard[prod.id])
+        ? estado.selecaoCorCard[prod.id]
+        : coresProd.find(
+            (c) => window.RpmCatalog && window.RpmCatalog.hasColorAnyStock(prod.id, c)
+          ) ||
+          coresProd[0] ||
+          "";
+
     const tamSelecionado =
       estado.selecaoTamanhoCard[prod.id] ||
       (estado.tamanhoFiltro !== "Todos" && (prod.tamanhos || []).includes(estado.tamanhoFiltro)
@@ -194,23 +730,29 @@
     const percDesconto = isOferta
       ? Math.round(((prod.precoAntigo - prod.preco) / prod.precoAntigo) * 100)
       : 0;
-    const tagTexto = (prod.destaque || (isOferta ? `-${percDesconto}% OFF` : "")).trim();
+    const tagTexto = prod.esgotadoGeral
+      ? "Esgotado"
+      : (prod.destaque || (isOferta ? `-${percDesconto}% OFF` : "")).trim();
 
     return `
-      <article class="product-card" data-prod-id="${prod.id}">
-        <div class="product-media" data-abrir-modal="${prod.id}">
-          <img src="${prod.imagem}" alt="${prod.nome}" loading="lazy" />
+      <article class="product-card" data-prod-id="${escaparHtml(prod.id)}">
+        <div class="product-media" data-abrir-pagina="${escaparHtml(prod.slug)}">
+          <img src="${escaparHtml(prod.imagem)}" alt="${escaparHtml(prod.nome)}" loading="lazy" />
           ${
             tagTexto
-              ? `<span class="product-badge ${isOferta ? "sale" : ""}">${tagTexto}</span>`
+              ? `<span class="product-badge ${isOferta ? "sale" : ""}">${escaparHtml(
+                  tagTexto
+                )}</span>`
               : ""
           }
           <span class="quick-detail-hint">Ver detalhes</span>
         </div>
 
         <div class="product-info">
-          <span class="product-cat">${prod.categoria}</span>
-          <h3 class="product-title" data-abrir-modal="${prod.id}">${prod.nome}</h3>
+          <span class="product-cat">${escaparHtml(prod.categoria)}</span>
+          <h3 class="product-title" data-abrir-pagina="${escaparHtml(prod.slug)}">${escaparHtml(
+      prod.nome
+    )}</h3>
 
           <div class="price-block">
             <div class="price-main-line">
@@ -230,26 +772,65 @@
           </div>
 
           <div class="card-sizes-wrap">
-            <div class="card-size-label" data-label-tam>
-              <span>Tamanho:</span>
-              ${tamSelecionado ? `<strong>${tamSelecionado}</strong>` : ""}
-            </div>
-            <div class="size-chips">
-              ${(prod.tamanhos || [])
-                .map(
-                  (tam) => `
+            ${
+              (prod.coresDetalhes || []).length > 0
+                ? `
+              <div class="card-colors-row" aria-label="Cores disponíveis">
+                ${prod.coresDetalhes
+                  .map(
+                    (cObj) => `
                   <button
                     type="button"
-                    class="size-chip ${tamSelecionado === tam ? "selected" : ""}"
-                    data-card-tam="${tam}"
-                    data-card-prod="${prod.id}"
-                  >${tam}</button>
+                    class="card-color-dot ${corCard === cObj.name ? "selected" : ""}"
+                    style="background:${escaparHtml(cObj.hex)}"
+                    title="Cor: ${escaparHtml(cObj.name)}"
+                    aria-label="Cor ${escaparHtml(cObj.name)}"
+                    data-card-cor="${escaparHtml(cObj.name)}"
+                    data-card-prod="${escaparHtml(prod.id)}"
+                  ></button>
                 `
-                )
+                  )
+                  .join("")}
+              </div>
+            `
+                : ""
+            }
+
+            <div class="card-size-label" data-label-tam>
+              <span>${corCard ? `${escaparHtml(corCard)} • ` : ""}Tamanho:</span>
+              ${tamSelecionado ? `<strong>${escaparHtml(tamSelecionado)}</strong>` : ""}
+            </div>
+
+            <div class="size-chips">
+              ${(prod.tamanhos || [])
+                .map((tam) => {
+                  const est =
+                    window.RpmCatalog && corCard
+                      ? window.RpmCatalog.getVariantStock(prod.id, corCard, tam)
+                      : 5;
+                  const semEst = est <= 0;
+                  return `
+                  <button
+                    type="button"
+                    class="size-chip ${tamSelecionado === tam && !semEst ? "selected" : ""} ${
+                    semEst ? "sold-out" : ""
+                  }"
+                    data-card-tam="${escaparHtml(tam)}"
+                    data-card-prod="${escaparHtml(prod.id)}"
+                    ${semEst ? 'disabled title="Esgotado nesta cor"' : ""}
+                  >${escaparHtml(tam)}</button>
+                `;
+                })
                 .join("")}
             </div>
-            <button type="button" class="btn-card-add" data-add-card="${prod.id}">
-              Adicionar à Sacola
+
+            <button
+              type="button"
+              class="btn-card-add"
+              data-add-card="${escaparHtml(prod.id)}"
+              ${prod.esgotadoGeral ? "disabled" : ""}
+            >
+              ${prod.esgotadoGeral ? "Peça Esgotada" : "Adicionar à Sacola"}
             </button>
           </div>
         </div>
@@ -260,14 +841,35 @@
   function conectarEventosDeGrade(container) {
     if (!container) return;
 
-    container.querySelectorAll("[data-abrir-modal]").forEach((el) => {
+    container.querySelectorAll("[data-abrir-pagina]").forEach((el) => {
       el.addEventListener("click", () => {
-        abrirModalProduto(el.getAttribute("data-abrir-modal"));
+        abrirPaginaProduto(el.getAttribute("data-abrir-pagina"));
+      });
+    });
+
+    container.querySelectorAll("[data-card-cor]").forEach((dot) => {
+      dot.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const prodId = dot.getAttribute("data-card-prod");
+        const cor = dot.getAttribute("data-card-cor");
+        estado.selecaoCorCard[prodId] = cor;
+
+        const tamAtual = estado.selecaoTamanhoCard[prodId];
+        if (tamAtual && window.RpmCatalog.getVariantStock(prodId, cor, tamAtual) <= 0) {
+          delete estado.selecaoTamanhoCard[prodId];
+        }
+
+        renderizarVitrinesInicio();
+        renderizarCatalogo();
+        if (estado.abaAtual === "produto" && estado.slugProdutoAberto) {
+          abrirPaginaProduto(estado.slugProdutoAberto, { rolarTopo: false, pushHistory: false });
+        }
       });
     });
 
     container.querySelectorAll("[data-card-tam]").forEach((chip) => {
-      chip.addEventListener("click", () => {
+      chip.addEventListener("click", (e) => {
+        e.stopPropagation();
         const prodId = chip.getAttribute("data-card-prod");
         const tam = chip.getAttribute("data-card-tam");
         estado.selecaoTamanhoCard[prodId] = tam;
@@ -279,8 +881,14 @@
     container.querySelectorAll("[data-add-card]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const prodId = btn.getAttribute("data-add-card");
-        const prod = DADOS_LOJA.produtos.find((p) => p.id === prodId);
-        if (!prod) return;
+        const prod = obterProdutosPublicados().find((p) => String(p.id) === String(prodId));
+        if (!prod || prod.esgotadoGeral) return;
+
+        const corEscolhida =
+          estado.selecaoCorCard[prodId] ||
+          (prod.cores || []).find((c) => window.RpmCatalog.hasColorAnyStock(prod.id, c)) ||
+          (prod.cores && prod.cores[0]) ||
+          "Única";
 
         const tam =
           estado.selecaoTamanhoCard[prodId] ||
@@ -295,31 +903,32 @@
             label.innerHTML = "<span>👆 Escolha um tamanho:</span>";
             label.classList.add("error-pulse");
           }
-          mostrarToast("Selecione um tamanho antes de adicionar à sacola ✨");
+          mostrarToast("Selecione um tamanho disponível antes de adicionar à sacola ✨");
           return;
         }
 
-        const corPadrao = (prod.cores && prod.cores[0]) || "Única";
-        adicionarNaSacola(prod, tam, corPadrao, 1);
+        adicionarNaSacola(prod, tam, corEscolhida, 1);
       });
     });
   }
 
   // ==========================================================================
-  // 4. ABA INÍCIO: VITRINES (MAIS VENDIDAS + PROMOÇÕES) E PESQUISA RÁPIDA
+  // 5. ABA INÍCIO: VITRINES E PESQUISA RÁPIDA
   // ==========================================================================
   function renderizarVitrinesInicio() {
+    const publicados = obterProdutosPublicados();
     const gradeMaisVendidas = document.getElementById("grade-mais-vendidas");
     const gradePromocoes = document.getElementById("grade-promocoes");
 
     if (gradeMaisVendidas) {
-      const maisVendidas = DADOS_LOJA.produtos.filter((p) => Boolean(p.maisVendido));
-      gradeMaisVendidas.innerHTML = maisVendidas.map(montarHtmlCardProduto).join("");
+      const maisVendidas = publicados.filter((p) => Boolean(p.maisVendido));
+      const exibidas = maisVendidas.length ? maisVendidas : publicados.slice(0, 4);
+      gradeMaisVendidas.innerHTML = exibidas.map(montarHtmlCardProduto).join("");
       conectarEventosDeGrade(gradeMaisVendidas);
     }
 
     if (gradePromocoes) {
-      const promocoes = DADOS_LOJA.produtos.filter(
+      const promocoes = publicados.filter(
         (p) => Boolean(p.precoAntigo && p.precoAntigo > p.preco)
       );
       gradePromocoes.innerHTML = promocoes.map(montarHtmlCardProduto).join("");
@@ -353,11 +962,13 @@
       return;
     }
 
-    const encontrados = DADOS_LOJA.produtos.filter((p) => corresponderTextoBusca(p, q));
+    const encontrados = obterProdutosPublicados().filter((p) => corresponderTextoBusca(p, q));
     box.classList.remove("hidden");
 
     if (encontrados.length === 0) {
-      box.innerHTML = `<p style="font-size:0.86rem;color:var(--ink-soft);">Nenhuma peça encontrada para "<strong>${q}</strong>". Clique em Buscar no Catálogo para explorar todas as categorias.</p>`;
+      box.innerHTML = `<p style="font-size:0.86rem;color:var(--ink-soft);">Nenhuma peça encontrada para "<strong>${escaparHtml(
+        q
+      )}</strong>". Clique em Buscar no Catálogo para explorar todas as categorias.</p>`;
       return;
     }
 
@@ -367,10 +978,10 @@
           .slice(0, 4)
           .map(
             (p) => `
-          <div class="live-result-item" data-live-prod="${p.id}">
-            <img src="${p.imagem}" alt="${p.nome}" />
+          <div class="live-result-item" data-live-slug="${escaparHtml(p.slug)}">
+            <img src="${escaparHtml(p.imagem)}" alt="${escaparHtml(p.nome)}" />
             <div>
-              <strong>${p.nome}</strong>
+              <strong>${escaparHtml(p.nome)}</strong>
               <span>${formatarMoeda(p.preco)}</span>
             </div>
           </div>
@@ -383,15 +994,13 @@
       </button>
     `;
 
-    box.querySelectorAll("[data-live-prod]").forEach((el) => {
-      el.addEventListener("click", () => abrirModalProduto(el.getAttribute("data-live-prod")));
+    box.querySelectorAll("[data-live-slug]").forEach((el) => {
+      el.addEventListener("click", () => abrirPaginaProduto(el.getAttribute("data-live-slug")));
     });
 
     const btnIr = document.getElementById("btn-ir-resultados-catalogo");
     if (btnIr) {
-      btnIr.addEventListener("click", () => {
-        aplicarBuscaEIrParaCatalogo(q);
-      });
+      btnIr.addEventListener("click", () => aplicarBuscaEIrParaCatalogo(q));
     }
   }
 
@@ -407,23 +1016,52 @@
   }
 
   // ==========================================================================
-  // 5. ABA CATÁLOGO: PESQUISA + FILTROS COMPLETOS
+  // 6. ABA CATÁLOGO: CATEGORIAS E TAMANHOS DINÂMICOS + FILTROS
   // ==========================================================================
+  function renderizarFiltroTamanhosDinamico() {
+    const selectTam = document.getElementById("filtro-tamanho");
+    if (!selectTam || !window.RpmCatalog) return;
+
+    const ativos = window.RpmCatalog.getActiveSizes();
+    const atual = estado.tamanhoFiltro;
+
+    selectTam.innerHTML = [
+      `<option value="Todos">Todos os tamanhos</option>`,
+      ...ativos.map(
+        (s) =>
+          `<option value="${escaparHtml(s.code)}" ${
+            atual === s.code ? "selected" : ""
+          }>${escaparHtml(s.code)}</option>`
+      )
+    ].join("");
+  }
+
   function renderizarPillsCategorias() {
     const container = document.getElementById("filtros-categoria");
     if (!container) return;
 
     const categorias = ["Todas"];
-    DADOS_LOJA.produtos.forEach((p) => {
+    if (window.RpmCatalog) {
+      window.RpmCatalog.getActiveCategories().forEach((c) => {
+        if (c.name && !categorias.includes(c.name)) categorias.push(c.name);
+      });
+    }
+    obterProdutosPublicados().forEach((p) => {
       if (p.categoria && !categorias.includes(p.categoria)) {
         categorias.push(p.categoria);
       }
     });
 
+    if (!categorias.includes(estado.categoriaAtiva)) {
+      estado.categoriaAtiva = "Todas";
+    }
+
     container.innerHTML = categorias
       .map((cat) => {
         const ativo = estado.categoriaAtiva === cat ? "active" : "";
-        return `<button type="button" class="cat-pill ${ativo}" data-cat="${cat}">${cat}</button>`;
+        return `<button type="button" class="cat-pill ${ativo}" data-cat="${escaparHtml(
+          cat
+        )}">${escaparHtml(cat)}</button>`;
       })
       .join("");
 
@@ -437,14 +1075,19 @@
   }
 
   function obterProdutosFiltradosCatalogo() {
-    let lista = [...DADOS_LOJA.produtos];
+    let lista = [...obterProdutosPublicados()];
 
     if (estado.categoriaAtiva !== "Todas") {
       lista = lista.filter((p) => p.categoria === estado.categoriaAtiva);
     }
 
     if (estado.tamanhoFiltro !== "Todos") {
-      lista = lista.filter((p) => (p.tamanhos || []).includes(estado.tamanhoFiltro));
+      lista = lista.filter((p) => {
+        if (!(p.tamanhos || []).includes(estado.tamanhoFiltro)) return false;
+        return (p.variantes || []).some(
+          (v) => v.sizeCode === estado.tamanhoFiltro && v.stockQuantity > 0
+        );
+      });
     }
 
     if (estado.precoFiltro === "promocao") {
@@ -492,7 +1135,7 @@
     if (!grade || !vazio) return;
 
     const filtrados = obterProdutosFiltradosCatalogo();
-    const totalGeral = DADOS_LOJA.produtos.length;
+    const totalGeral = obterProdutosPublicados().length;
 
     if (contador) {
       contador.textContent =
@@ -539,170 +1182,45 @@
   }
 
   // ==========================================================================
-  // 6. MODAL DE DETALHES DO PRODUTO
-  // ==========================================================================
-  function abrirModalProduto(prodId) {
-    const prod = DADOS_LOJA.produtos.find((p) => p.id === prodId);
-    if (!prod) return;
-
-    const container = document.getElementById("conteudo-modal-produto");
-    const modal = document.getElementById("modal-produto");
-    if (!container || !modal) return;
-
-    let tamEscolhido =
-      estado.selecaoTamanhoCard[prod.id] || (prod.tamanhos && prod.tamanhos[0]) || "Único";
-    let corEscolhida = (prod.cores && prod.cores[0]) || "Padrão";
-
-    const percPix = DADOS_LOJA.descontoPixPercentual || 0;
-    const precoPix = prod.preco * (1 - percPix / 100);
-    const parcelas = DADOS_LOJA.parcelasSemJuros || 3;
-
-    function renderizarInterno() {
-      container.innerHTML = `
-        <div class="modal-prod-img-wrap">
-          <img src="${prod.imagem}" alt="${prod.nome}" />
-        </div>
-        <div class="modal-prod-details">
-          <span class="eyebrow">${prod.categoria}</span>
-          <h3 id="modal-prod-titulo">${prod.nome}</h3>
-
-          <div class="price-block">
-            <div class="price-main-line">
-              ${
-                prod.precoAntigo
-                  ? `<span class="old-price">${formatarMoeda(prod.precoAntigo)}</span>`
-                  : ""
-              }
-              <span class="current-price" style="font-size:1.35rem">${formatarMoeda(prod.preco)}</span>
-            </div>
-            ${
-              percPix > 0
-                ? `<div class="pix-price-hint">${formatarMoeda(precoPix)} no PIX (${percPix}% de desconto)</div>`
-                : ""
-            }
-            <div class="installment-hint">ou até ${parcelas}x de ${formatarMoeda(
-              prod.preco / parcelas
-            )} sem juros</div>
-          </div>
-
-          <p class="modal-prod-desc">${prod.descricao}</p>
-          <div class="modal-fabric-box"><strong>Tecido &amp; Detalhes:</strong> ${prod.tecido}</div>
-
-          ${
-            prod.cores && prod.cores.length > 0
-              ? `
-            <div class="selector-group">
-              <div class="selector-header">
-                <span>Cor selecionada: <strong>${corEscolhida}</strong></span>
-              </div>
-              <div class="color-chips">
-                ${prod.cores
-                  .map(
-                    (cor) => `
-                  <button type="button" class="color-chip ${
-                    corEscolhida === cor ? "selected" : ""
-                  }" data-modal-cor="${cor}">${cor}</button>
-                `
-                  )
-                  .join("")}
-              </div>
-            </div>
-          `
-              : ""
-          }
-
-          <div class="selector-group">
-            <div class="selector-header">
-              <span>Tamanho: <strong>${tamEscolhido}</strong></span>
-              <button type="button" class="text-btn" id="btn-medidas-dentro-modal">📏 Guia de Medidas</button>
-            </div>
-            <div class="size-chips">
-              ${(prod.tamanhos || [])
-                .map(
-                  (tam) => `
-                <button type="button" class="size-chip ${
-                  tamEscolhido === tam ? "selected" : ""
-                }" data-modal-tam="${tam}">${tam}</button>
-              `
-                )
-                .join("")}
-            </div>
-          </div>
-
-          <div class="modal-actions-stack">
-            <button type="button" class="btn btn-primary btn-block" id="btn-modal-add-sacola">
-              Adicionar à Sacola • ${formatarMoeda(prod.preco)}
-            </button>
-            <button type="button" class="btn btn-whatsapp btn-block" id="btn-modal-comprar-direto">
-              Comprar esta peça no WhatsApp
-            </button>
-          </div>
-        </div>
-      `;
-
-      container.querySelectorAll("[data-modal-cor]").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          corEscolhida = btn.getAttribute("data-modal-cor");
-          renderizarInterno();
-        });
-      });
-
-      container.querySelectorAll("[data-modal-tam]").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          tamEscolhido = btn.getAttribute("data-modal-tam");
-          estado.selecaoTamanhoCard[prod.id] = tamEscolhido;
-          renderizarInterno();
-        });
-      });
-
-      document.getElementById("btn-medidas-dentro-modal").addEventListener("click", () => {
-        fecharTodosModais();
-        abrirCamada(document.getElementById("modal-medidas"));
-      });
-
-      document.getElementById("btn-modal-add-sacola").addEventListener("click", () => {
-        fecharTodosModais();
-        adicionarNaSacola(prod, tamEscolhido, corEscolhida, 1);
-      });
-
-      document.getElementById("btn-modal-comprar-direto").addEventListener("click", () => {
-        const msg = [
-          `Olá! Vim pelo site da *${DADOS_LOJA.nomeLoja}* e gostaria de comprar esta peça: ✨`,
-          "",
-          `• *${prod.nome}*`,
-          `  Tamanho: *${tamEscolhido}* | Cor: *${corEscolhida}*`,
-          `  Valor: ${formatarMoeda(prod.preco)} (${formatarMoeda(precoPix)} no PIX)`,
-          "",
-          "Poderia confirmar a disponibilidade?"
-        ].join("\n");
-        fecharTodosModais();
-        exibirConfirmacaoPedido(msg);
-      });
-    }
-
-    renderizarInterno();
-    abrirCamada(modal);
-  }
-
-  // ==========================================================================
-  // 7. SACOLA DE COMPRAS E CHECKOUT WHATSAPP
+  // 7. SACOLA DE COMPRAS COM CONTROLE DE ESTOQUE + REVALIDAÇÃO PRÉ-CHECKOUT
   // ==========================================================================
   function salvarSacola() {
     storage.set("rpm_sacola_v1", estado.sacola);
   }
 
-  function adicionarNaSacola(prod, tamanho, cor, qtd) {
+  function adicionarNaSacola(prod, tamanho, cor, qtd, imagemOpcional) {
+    const estoqueDisp = window.RpmCatalog
+      ? window.RpmCatalog.getVariantStock(prod.id, cor, tamanho)
+      : 10;
+
+    if (estoqueDisp <= 0) {
+      mostrarToast(`A combinação ${cor} (${tamanho}) está esgotada no momento.`);
+      return;
+    }
+
+    // Cores ou tamanhos diferentes do mesmo produto são salvos separadamente
     const uid = `${prod.id}__${tamanho}__${cor}`;
     const existente = estado.sacola.find((item) => item.uid === uid);
+    const qtdAtual = existente ? existente.qtd : 0;
+
+    if (qtdAtual + qtd > estoqueDisp) {
+      mostrarToast(
+        `Estoque máximo atingido para ${prod.nome} em ${cor} (${tamanho}): ${estoqueDisp} un.`
+      );
+      return;
+    }
 
     if (existente) {
       existente.qtd += qtd;
+      existente.preco = prod.preco;
+      existente.slug = prod.slug;
     } else {
       estado.sacola.push({
         uid,
         id: prod.id,
+        slug: prod.slug,
         nome: prod.nome,
-        imagem: prod.imagem,
+        imagem: imagemOpcional || prod.imagem,
         preco: prod.preco,
         tamanho,
         cor,
@@ -715,15 +1233,24 @@
     renderizarVitrinesInicio();
     renderizarCatalogo();
     abrirSacola();
-    mostrarToast(`✨ ${prod.nome} (${tamanho}) adicionado à sacola!`);
+    mostrarToast(`✨ ${prod.nome} (${cor} • ${tamanho}) adicionado à sacola!`);
   }
 
   function alterarQuantidade(uid, delta) {
     const idx = estado.sacola.findIndex((i) => i.uid === uid);
     if (idx === -1) return;
 
-    estado.sacola[idx].qtd += delta;
-    if (estado.sacola[idx].qtd <= 0) {
+    const item = estado.sacola[idx];
+    if (delta > 0 && window.RpmCatalog) {
+      const maxEstoque = window.RpmCatalog.getVariantStock(item.id, item.cor, item.tamanho);
+      if (item.qtd + delta > maxEstoque) {
+        mostrarToast(`Apenas ${maxEstoque} unidade(s) disponíveis nesta cor e tamanho.`);
+        return;
+      }
+    }
+
+    item.qtd += delta;
+    if (item.qtd <= 0) {
       estado.sacola.splice(idx, 1);
     }
     salvarSacola();
@@ -814,18 +1341,30 @@
       .map(
         (item) => `
         <li class="cart-item">
-          <img src="${item.imagem}" alt="${item.nome}" />
+          <img src="${escaparHtml(item.imagem)}" alt="${escaparHtml(
+          item.nome
+        )}" data-cart-abrir="${escaparHtml(item.slug || item.id)}" style="cursor:pointer" />
           <div>
             <div class="cart-item-top">
-              <span class="cart-item-title">${item.nome}</span>
-              <button type="button" class="cart-remove-btn" data-remover="${item.uid}" title="Remover item">✕</button>
+              <span class="cart-item-title" data-cart-abrir="${escaparHtml(
+                item.slug || item.id
+              )}" style="cursor:pointer">${escaparHtml(item.nome)}</span>
+              <button type="button" class="cart-remove-btn" data-remover="${escaparHtml(
+                item.uid
+              )}" title="Remover item">✕</button>
             </div>
-            <div class="cart-item-meta">Tam: <strong>${item.tamanho}</strong> • Cor: ${item.cor}</div>
+            <div class="cart-item-meta">Cor: <strong>${escaparHtml(
+              item.cor
+            )}</strong> • Tam: <strong>${escaparHtml(item.tamanho)}</strong></div>
             <div class="cart-item-bottom">
               <div class="qty-control">
-                <button type="button" class="qty-btn" data-menos="${item.uid}" aria-label="Diminuir quantidade">−</button>
+                <button type="button" class="qty-btn" data-menos="${escaparHtml(
+                  item.uid
+                )}" aria-label="Diminuir quantidade">−</button>
                 <span class="qty-val">${item.qtd}</span>
-                <button type="button" class="qty-btn" data-mais="${item.uid}" aria-label="Aumentar quantidade">+</button>
+                <button type="button" class="qty-btn" data-mais="${escaparHtml(
+                  item.uid
+                )}" aria-label="Aumentar quantidade">+</button>
               </div>
               <span class="cart-item-price">${formatarMoeda(item.preco * item.qtd)}</span>
             </div>
@@ -835,6 +1374,9 @@
       )
       .join("");
 
+    listaEl.querySelectorAll("[data-cart-abrir]").forEach((el) =>
+      el.addEventListener("click", () => abrirPaginaProduto(el.getAttribute("data-cart-abrir")))
+    );
     listaEl.querySelectorAll("[data-menos]").forEach((b) =>
       b.addEventListener("click", () => alterarQuantidade(b.getAttribute("data-menos"), -1))
     );
@@ -864,8 +1406,8 @@
     document.getElementById("resumo-total").textContent = formatarMoeda(totais.totalFinal);
   }
 
-  function finalizarPedidoWhatsApp() {
-    if (estado.sacola.length === 0) return;
+  async function finalizarPedidoWhatsApp() {
+    if (estado.sacola.length === 0 || estado.validandoCheckout) return;
 
     const nomeInput = document.getElementById("cliente-nome");
     const nome = (nomeInput ? nomeInput.value : "").trim();
@@ -875,6 +1417,37 @@
       return;
     }
 
+    const btnCheckout = document.getElementById("btn-finalizar-whatsapp");
+
+    // Revalida preços atuais e disponibilidade real de estoque no Supabase antes de concluir
+    if (window.RpmCatalog && window.RpmCatalog.revalidateCart) {
+      estado.validandoCheckout = true;
+      if (btnCheckout) {
+        btnCheckout.disabled = true;
+        btnCheckout.textContent = "Verificando estoque atualizado...";
+      }
+
+      try {
+        const revisao = await window.RpmCatalog.revalidateCart(estado.sacola);
+        estado.sacola = revisao.itensAtualizados;
+        salvarSacola();
+        renderizarSacola();
+
+        if (!revisao.valido) {
+          mostrarToast(revisao.alteracoes[0] || "Alguns itens na sacola sofreram alteração de estoque.");
+          return;
+        }
+      } finally {
+        estado.validandoCheckout = false;
+        if (btnCheckout) {
+          btnCheckout.disabled = false;
+          btnCheckout.textContent = "Finalizar Pedido no WhatsApp";
+        }
+      }
+    }
+
+    if (estado.sacola.length === 0) return;
+
     const entrega = document.getElementById("cliente-entrega").value;
     const cep = document.getElementById("cliente-cep").value.trim();
     const pagamento = document.getElementById("cliente-pagamento").value;
@@ -883,9 +1456,9 @@
 
     const linhasItens = estado.sacola.map(
       (item) =>
-        `• ${item.qtd}x *${item.nome}*\n  Tam: ${item.tamanho} | Cor: ${item.cor} — ${formatarMoeda(
-          item.preco * item.qtd
-        )}`
+        `• ${item.qtd}x *${item.nome}*\n  Cor: ${item.cor} | Tam: ${
+          item.tamanho
+        } — ${formatarMoeda(item.preco * item.qtd)}`
     );
 
     const linhasResumo = [`Subtotal: ${formatarMoeda(totais.subtotal)}`];
@@ -934,13 +1507,11 @@
 
     try {
       window.open(urlWa, "_blank", "noopener");
-    } catch (_) {
-      // Botão no modal permanece disponível
-    }
+    } catch (_) {}
   }
 
   // ==========================================================================
-  // 8. CONTROLES GERAIS E EVENTOS
+  // 8. CONTROLES GERAIS, HISTÓRICO DE ROTAS E EVENTOS
   // ==========================================================================
   function abrirCamada(elemento) {
     document.getElementById("backdrop").classList.remove("hidden");
@@ -965,8 +1536,46 @@
     abrirCamada(document.getElementById("sacola-drawer"));
   }
 
+  function resolverRotaAtual(rolarTopo = false) {
+    const subrota = window.getRpmCurrentSubroute ? window.getRpmCurrentSubroute() : "/";
+
+    if (subrota.startsWith("/produto/")) {
+      const slug = decodeURIComponent(subrota.replace(/^\/produto\//, "").replace(/\/+$/, ""));
+      if (slug) {
+        abrirPaginaProduto(slug, { rolarTopo, pushHistory: false });
+        return;
+      }
+    }
+
+    if (subrota === "/admin" || subrota.startsWith("/admin/")) {
+      if (window.RPMAdmin) {
+        window.RPMAdmin.openPanel(false);
+        return;
+      }
+    }
+
+    const hashInicial = (window.location.hash || "").replace("#", "").toLowerCase();
+    if (["inicio", "catalogo", "contato"].includes(hashInicial)) {
+      navegarParaAba(hashInicial, { rolarTopo, pushHistory: false });
+    } else {
+      navegarParaAba("inicio", { rolarTopo, pushHistory: false });
+    }
+  }
+
+  function reRenderizarVitrineCompleta() {
+    preencherDadosDaLoja();
+    renderizarFiltroTamanhosDinamico();
+    renderizarPillsCategorias();
+    renderizarVitrinesInicio();
+    renderizarCatalogo();
+    renderizarSacola();
+
+    if (estado.abaAtual === "produto" && estado.slugProdutoAberto) {
+      abrirPaginaProduto(estado.slugProdutoAberto, { rolarTopo: false, pushHistory: false });
+    }
+  }
+
   function configurarEventos() {
-    // Cliques em todas as abas (Início, Catálogo, Contato)
     document.querySelectorAll("[data-aba-link]").forEach((el) => {
       el.addEventListener("click", (e) => {
         e.preventDefault();
@@ -976,7 +1585,6 @@
       });
     });
 
-    // Pesquisa na aba Início
     const inputHome = document.getElementById("input-pesquisa-inicio");
     const formHome = document.getElementById("form-pesquisa-inicio");
 
@@ -989,7 +1597,6 @@
       aplicarBuscaEIrParaCatalogo(inputHome.value);
     });
 
-    // Atalhos rápidos da pesquisa na aba Início
     document.querySelectorAll("[data-atalho-cat]").forEach((btn) => {
       btn.addEventListener("click", () => {
         limparTodosOsFiltros();
@@ -1018,7 +1625,6 @@
       navegarParaAba("catalogo");
     });
 
-    // Pesquisa e filtros na aba Catálogo
     const inputCat = document.getElementById("input-pesquisa-catalogo");
     const btnLimparTexto = document.getElementById("btn-limpar-texto-busca");
 
@@ -1059,7 +1665,6 @@
       abrirCamada(document.getElementById("modal-medidas"));
     });
 
-    // Aba Contato: copiar contatos e enviar mensagem direta
     document.getElementById("btn-copiar-wa").addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText(DADOS_LOJA.whatsappExibicao);
@@ -1097,7 +1702,6 @@
       mostrarToast("Abrindo conversa no WhatsApp...");
     });
 
-    // Sacola, menu e modais
     document.getElementById("btn-abrir-sacola").addEventListener("click", abrirSacola);
     document.getElementById("btn-fechar-sacola").addEventListener("click", fecharTodosModais);
     document.getElementById("btn-abrir-menu").addEventListener("click", () => {
@@ -1139,22 +1743,26 @@
         mostrarToast("Selecione o texto acima para copiar");
       }
     });
+
+    // Eventos globais de integração com Catálogo Dinâmico e Admin
+    window.addEventListener("popstate", () => resolverRotaAtual(false));
+    window.addEventListener("rpm:catalogo-atualizado", reRenderizarVitrineCompleta);
+    window.addEventListener("rpm:voltar-loja-inicio", () => navegarParaAba("inicio"));
+    window.addEventListener("rpm:abrir-pagina-produto", (e) => {
+      if (e.detail && e.detail.slug) abrirPaginaProduto(e.detail.slug);
+    });
   }
 
-  document.addEventListener("DOMContentLoaded", () => {
-    preencherDadosDaLoja();
-    renderizarPillsCategorias();
-    renderizarVitrinesInicio();
-    renderizarCatalogo();
-    renderizarSacola();
+  document.addEventListener("DOMContentLoaded", async () => {
     configurarEventos();
 
-    // Abre diretamente a aba caso a URL tenha #inicio, #catalogo ou #contato
-    const hashInicial = (window.location.hash || "").replace("#", "").toLowerCase();
-    if (["inicio", "catalogo", "contato"].includes(hashInicial)) {
-      navegarParaAba(hashInicial, false);
-    } else {
-      navegarParaAba("inicio", false);
+    // Renderiza imediatamente e em seguida sincroniza com o banco Supabase
+    reRenderizarVitrineCompleta();
+    resolverRotaAtual(false);
+
+    if (window.RpmCatalog && window.RpmCatalog.loadCatalog) {
+      await window.RpmCatalog.loadCatalog(true);
+      resolverRotaAtual(false);
     }
   });
 })();

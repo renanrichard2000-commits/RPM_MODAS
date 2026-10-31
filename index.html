@@ -5,6 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RPM MODAS | MODA FEMININA</title>
   <meta name="description" content="RPM MODAS - Moda Feminina. Confira nossas roupas mais vendidas, promoções especiais, catálogo completo com filtros e atendimento pelo WhatsApp e Instagram." />
+  <script>
+    (function () {
+      var p = window.location.pathname || "/";
+      var baseHref = p === "/RPM_MODAS" || p.indexOf("/RPM_MODAS/") === 0 ? "/RPM_MODAS/" : "/";
+      var baseEl = document.createElement("base");
+      baseEl.href = baseHref;
+      document.head.appendChild(baseEl);
+
+      var params = new URLSearchParams(window.location.search || "");
+      var subrota = params.get("p");
+      if (subrota) {
+        var limpa = String(subrota).replace(/^\/+/, "");
+        params.delete("p");
+        var resto = params.toString();
+        var novaUrl = baseHref + limpa + (resto ? "?" + resto : "") + (window.location.hash || "");
+        window.history.replaceState(null, "", novaUrl);
+      }
+    })();
+  </script>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23231b16'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Georgia,serif' font-weight='bold' font-size='22' fill='%23f7f1e8'%3ERPM%3C/text%3E%3C/svg%3E" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -92,13 +111,22 @@
             </svg>
           </button>
 
-          <!-- Menu da conta com opção de sair -->
+          <!-- Menu da conta com opção de sair (e acesso ao painel exclusivamente para admin) -->
           <div class="auth-user-dropdown hidden" id="auth-user-dropdown" role="menu" aria-label="Menu da conta">
             <div class="auth-dropdown-header">
               <strong id="auth-menu-full-name">Cliente</strong>
               <span id="auth-menu-email"></span>
               <span class="auth-admin-badge hidden" id="auth-admin-badge">Conta Administradora</span>
             </div>
+            <button type="button" class="auth-admin-panel-btn hidden" id="btn-auth-abrir-admin" role="menuitem">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+              </svg>
+              Painel Administrativo
+            </button>
             <button type="button" class="auth-logout-btn" id="btn-auth-logout" role="menuitem">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
@@ -444,6 +472,20 @@
         </div>
       </div>
     </section>
+
+    <!-- ======================================================================
+         PÁGINA INDIVIDUAL DE CADA ROUPA (/RPM_MODAS/produto/<slug>)
+         ====================================================================== -->
+    <section id="aba-produto" class="tab-page hidden" aria-label="Detalhes do Produto">
+      <div class="container product-page-container" id="conteudo-pagina-produto">
+        <!-- Preenchido dinamicamente ao abrir um produto -->
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         PAINEL ADMINISTRATIVO EXCLUSIVO (renderizado somente após is_admin())
+         ====================================================================== -->
+    <section id="aba-admin" class="tab-page hidden" aria-label="Painel Administrativo"></section>
   </main>
 
   <!-- RODAPÉ ENXUTO COM AS 3 ABAS -->
@@ -645,7 +687,7 @@
     </div>
   </div>
 
-  <!-- POP-UP DE LOGIN EXCLUSIVO GOOGLE -->
+  <!-- POP-UP UNIFICADO DE LOGIN (CLIENTES COM GOOGLE + ADMIN COM USUÁRIO E SENHA) -->
   <div
     class="login-modal-overlay hidden"
     id="modal-login"
@@ -671,13 +713,13 @@
 
       <h3 id="titulo-modal-login">Bem-vinda à RPM MODAS</h3>
       <p class="login-modal-text" id="desc-modal-login">
-        Entre na sua conta para aproveitar sua experiência na nossa loja.
+        Entre na sua conta para continuar.
       </p>
 
       <div class="login-erro-box hidden" id="login-erro-box" role="alert"></div>
 
+      <!-- Botão 1: Clientes (Exclusivo Google OAuth) -->
       <button type="button" class="btn-google-oauth" id="btn-continuar-google">
-        <!-- Ícone oficial colorido do Google -->
         <svg
           id="icone-oficial-google"
           class="google-g-icon"
@@ -691,23 +733,80 @@
           <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
           <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
         </svg>
-
-        <!-- Indicador de carregamento -->
         <span class="login-spinner hidden" id="login-google-spinner" aria-hidden="true"></span>
-
         <span id="texto-btn-google">Continuar com Google</span>
       </button>
+
+      <!-- Separador visual -->
+      <div class="login-divider" role="separator" aria-label="ou">
+        <span>OU</span>
+      </div>
+
+      <!-- Campos de Login Administrativo -->
+      <form class="login-admin-form" id="form-login-admin" novalidate>
+        <div class="login-field-group">
+          <label for="input-admin-usuario">Usuário</label>
+          <input
+            type="text"
+            id="input-admin-usuario"
+            name="username"
+            placeholder="Digite seu usuário"
+            autocomplete="username"
+            spellcheck="false"
+            required
+          />
+        </div>
+
+        <div class="login-field-group">
+          <label for="input-admin-senha">Senha</label>
+          <div class="password-input-wrap">
+            <input
+              type="password"
+              id="input-admin-senha"
+              name="password"
+              placeholder="Digite sua senha"
+              autocomplete="current-password"
+              required
+            />
+            <button
+              type="button"
+              class="password-toggle-btn"
+              id="btn-toggle-senha"
+              aria-label="Mostrar senha"
+              title="Mostrar senha"
+            >
+              <!-- Ícone olho aberto (mostrar) -->
+              <svg id="icone-senha-mostrar" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              <!-- Ícone olho cortado (ocultar) -->
+              <svg id="icone-senha-ocultar" class="hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-login-entrar" id="btn-submit-admin">
+          <span class="login-spinner login-spinner-light hidden" id="login-admin-spinner" aria-hidden="true"></span>
+          <span id="texto-btn-admin">Entrar</span>
+        </button>
+      </form>
     </div>
   </div>
 
   <!-- TOAST -->
   <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
 
-  <!-- BIBLIOTECA SUPABASE + MÓDULOS DE AUTENTICAÇÃO E LOJA -->
+  <!-- BIBLIOTECA SUPABASE + CATÁLOGO DINÂMICO, AUTENTICAÇÃO, PAINEL ADMIN E LOJA -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js"></script>
-  <script src="auth.js"></script>
   <script src="dados-loja.js"></script>
+  <script src="catalog-service.js"></script>
+  <script src="auth.js"></script>
+  <script src="admin.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

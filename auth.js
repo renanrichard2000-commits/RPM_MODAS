@@ -1,14 +1,12 @@
 /**
  * ============================================================================
- * AUTENTICAÇÃO GOOGLE OAUTH, SESSÃO, PERFIL E PERMISSÕES — RPM MODAS
+ * AUTENTICAÇÃO UNIFICADA (CLIENTES GOOGLE + ADMIN USUÁRIO/SENHA) — RPM MODAS
  * ============================================================================
- * Módulos organizados:
- * 1. Utilitários de URL e retorno OAuth (compatível com GitHub Pages)
- * 2. Gerenciamento automático de perfil (tabela public.profiles)
- * 3. Verificação segura de permissão administrativa no banco (RLS / RPC)
- * 4. Controle visual do cabeçalho (Botão ENTRAR vs Identificação + Sair)
- * 5. Controle do Pop-up de Login (abertura, fechamento, loading, erros)
- * 6. Inicialização da sessão e autenticação exclusiva Google OAuth
+ * - Um único botão ENTRAR e um único pop-up centralizado.
+ * - Clientes entram exclusivamente via Google OAuth.
+ * - Proprietário entra via usuário autorizado + senha segura no Supabase Auth
+ *   (nenhum usuário, e-mail privado ou senha é exposto no HTML/JS/GitHub).
+ * - Permissões administrativas são validadas no banco via RLS / RPC is_admin().
  */
 (function () {
   "use strict";
@@ -16,13 +14,14 @@
   const estadoAuth = {
     usuario: null,
     perfil: null,
+    adminUsername: null,
     isAdmin: false,
-    iniciandoOAuth: false,
+    processandoAuth: false,
     ultimoUserIdSincronizado: null
   };
 
   // ==========================================================================
-  // 1. UTILITÁRIOS DE URL E RETORNO OAUTH (GITHUB PAGES)
+  // 1. UTILITÁRIOS DE URL E RETORNO OAUTH
   // ==========================================================================
   function possuiCallbackOAuthNaUrl() {
     const search = window.location.search || "";
@@ -63,11 +62,11 @@
       const hashAtual = window.location.hash || "";
       const abaSalva = ["#inicio", "#catalogo", "#contato"].includes(hashAtual.toLowerCase())
         ? hashAtual.toLowerCase()
-        : "#inicio";
+        : "";
       const urlLimpa = `${window.location.pathname}${abaSalva}`;
       window.history.replaceState(null, "", urlLimpa);
     } catch (_) {
-      // Ignora em ambientes restritos
+      // Ignora caso restrito
     }
   }
 
@@ -82,9 +81,9 @@
   }
 
   // ==========================================================================
-  // 2. GERENCIAMENTO DE PERFIL DO CLIENTE (public.profiles)
+  // 2. SINCRONIZAÇÃO DE PERFIL DE CLIENTES (public.profiles)
   // ==========================================================================
-  function extrairMetadadosGoogle(user) {
+  function extrairMetadadosUsuario(user) {
     if (!user) return { fullName: "", email: "", avatarUrl: "" };
     const meta = user.user_metadata || {};
 
@@ -95,7 +94,10 @@
     return { fullName, email, avatarUrl };
   }
 
-  function obterPrimeiroNome(fullName, email) {
+  function obterNomeCurtoExibicao(fullName, email, adminUsername) {
+    if (adminUsername) {
+      return adminUsername.startsWith("@") ? adminUsername : `@${adminUsername}`;
+    }
     if (fullName) {
       return fullName.split(/\s+/)[0];
     }
@@ -105,19 +107,20 @@
     return "Cliente";
   }
 
-  function obterInicialNome(fullName, email) {
-    const base = (fullName || email || "R").trim();
-    return base.charAt(0).toUpperCase();
+  function obterInicialAvatar(fullName, email, adminUsername) {
+    const base = String(adminUsername || fullName || email || "R")
+      .replace(/^@+/, "")
+      .trim();
+    return (base.charAt(0) || "R").toUpperCase();
   }
 
   async function sincronizarPerfilCliente(user) {
     const supabase = window.getRpmSupabaseClient && window.getRpmSupabaseClient();
     if (!supabase || !user || !user.id) return null;
 
-    const { fullName, email, avatarUrl } = extrairMetadadosGoogle(user);
+    const { fullName, email, avatarUrl } = extrairMetadadosUsuario(user);
 
     try {
-      // Consulta somente o próprio perfil (protegido por RLS: auth.uid() = id)
       const { data: perfilExistente, error: erroConsulta } = await supabase
         .from("profiles")
         .select("id, full_name, email, avatar_url, created_at, updated_at")
@@ -125,7 +128,6 @@
         .maybeSingle();
 
       if (erroConsulta) {
-        // Caso a tabela ainda não tenha sido criada no Supabase SQL Editor (PGRST205), mantém sessão funcionando
         if (erroConsulta.code !== "PGRST205") {
           console.warn("[RPM Auth] Aviso ao consultar perfil:", erroConsulta.message);
         }
@@ -135,7 +137,6 @@
       const agoraIso = new Date().toISOString();
 
       if (!perfilExistente) {
-        // Cria o perfil automaticamente no primeiro acesso (sem duplicar graças ao onConflict: 'id')
         const { data: novoPerfil, error: erroCriacao } = await supabase
           .from("profiles")
           .upsert(
@@ -151,14 +152,10 @@
           .select("id, full_name, email, avatar_url, created_at, updated_at")
           .maybeSingle();
 
-        if (erroCriacao) {
-          console.warn("[RPM Auth] Aviso ao registrar perfil inicial:", erroCriacao.message);
-          return null;
-        }
+        if (erroCriacao) return null;
         return novoPerfil;
       }
 
-      // Atualiza dados básicos caso tenham mudado na conta Google (sem alterar permissões)
       const mudouDados =
         (fullName && fullName !== (perfilExistente.full_name || "")) ||
         (email && email !== (perfilExistente.email || "")) ||
@@ -177,45 +174,53 @@
           .select("id, full_name, email, avatar_url, created_at, updated_at")
           .maybeSingle();
 
-        if (!erroUpdate && perfilAtualizado) {
-          return perfilAtualizado;
-        }
+        if (!erroUpdate && perfilAtualizado) return perfilAtualizado;
       }
 
       return perfilExistente;
-    } catch (err) {
-      console.warn("[RPM Auth] Falha de rede ao sincronizar perfil:", err);
+    } catch (_) {
       return null;
     }
   }
 
   // ==========================================================================
-  // 3. VERIFICAÇÃO DE PERMISSÃO ADMINISTRATIVA NO BANCO DE DADOS
+  // 3. VERIFICAÇÃO DE AUTORIZAÇÃO ADMINISTRATIVA NO BANCO (admin_users + RLS)
   // ==========================================================================
   async function verificarPermissaoAdminBanco() {
     const supabase = window.getRpmSupabaseClient && window.getRpmSupabaseClient();
     if (!supabase || !estadoAuth.usuario) {
       estadoAuth.isAdmin = false;
+      estadoAuth.adminUsername = null;
       return false;
     }
 
     try {
-      // Verifica permissão diretamente no PostgreSQL via função SECURITY DEFINER is_admin()
-      const { data, error } = await supabase.rpc("is_admin");
-      if (!error && data === true) {
+      const { data: ehAdmin, error } = await supabase.rpc("is_admin");
+      if (!error && ehAdmin === true) {
         estadoAuth.isAdmin = true;
+
+        const { data: rowAdmin } = await supabase
+          .from("admin_users")
+          .select("username")
+          .eq("user_id", estadoAuth.usuario.id)
+          .eq("is_active", true)
+          .maybeSingle();
+
+        estadoAuth.adminUsername =
+          rowAdmin && rowAdmin.username ? `@${rowAdmin.username.replace(/^@+/, "")}` : null;
         return true;
       }
     } catch (_) {
-      // Permanece falso por segurança padrão (deny by default)
+      // Negado por padrão
     }
 
     estadoAuth.isAdmin = false;
+    estadoAuth.adminUsername = null;
     return false;
   }
 
   // ==========================================================================
-  // 4. INTERFACE DO CABEÇALHO (BOTÃO ENTRAR vs CLIENTE CONECTADO + SAIR)
+  // 4. CABEÇALHO E MENU DO USUÁRIO CONECTADO
   // ==========================================================================
   function fecharMenuUsuario() {
     const dropdown = document.getElementById("auth-user-dropdown");
@@ -236,7 +241,7 @@
   }
 
   function preencherNomeNosFormulariosSeVazio(nomeCompleto) {
-    if (!nomeCompleto) return;
+    if (!nomeCompleto || estadoAuth.isAdmin) return;
     ["cliente-nome", "contato-nome"].forEach((idCampo) => {
       const input = document.getElementById(idCampo);
       if (input && !input.value.trim()) {
@@ -252,8 +257,9 @@
     const inicialAvatar = document.getElementById("auth-user-initial");
     const spanNomeCurto = document.getElementById("auth-user-short-name");
     const menuNomeCompleto = document.getElementById("auth-menu-full-name");
-    const menuEmail = document.getElementById("auth-menu-email");
+    const menuSubInfo = document.getElementById("auth-menu-email");
     const badgeAdmin = document.getElementById("auth-admin-badge");
+    const btnIrPainel = document.getElementById("btn-auth-abrir-admin");
 
     if (!btnEntrar || !containerUsuario) return;
 
@@ -262,33 +268,45 @@
       containerUsuario.classList.add("hidden");
       fecharMenuUsuario();
       if (badgeAdmin) badgeAdmin.classList.add("hidden");
+      if (btnIrPainel) btnIrPainel.classList.add("hidden");
       return;
     }
 
-    const dadosGoogle = extrairMetadadosGoogle(estadoAuth.usuario);
+    const dadosMeta = extrairMetadadosUsuario(estadoAuth.usuario);
     const nomeCompleto =
-      (estadoAuth.perfil && estadoAuth.perfil.full_name) || dadosGoogle.fullName || "";
-    const email = (estadoAuth.perfil && estadoAuth.perfil.email) || dadosGoogle.email || "";
+      (estadoAuth.perfil && estadoAuth.perfil.full_name) || dadosMeta.fullName || "";
+    const emailReal = (estadoAuth.perfil && estadoAuth.perfil.email) || dadosMeta.email || "";
     const avatarUrl =
-      (estadoAuth.perfil && estadoAuth.perfil.avatar_url) || dadosGoogle.avatarUrl || "";
+      (estadoAuth.perfil && estadoAuth.perfil.avatar_url) || dadosMeta.avatarUrl || "";
 
-    const primeiroNome = obterPrimeiroNome(nomeCompleto, email);
-    const inicial = obterInicialNome(nomeCompleto, email);
+    const nomeCurto = obterNomeCurtoExibicao(
+      nomeCompleto,
+      emailReal,
+      estadoAuth.adminUsername
+    );
+    const inicial = obterInicialAvatar(nomeCompleto, emailReal, estadoAuth.adminUsername);
 
     btnEntrar.classList.add("hidden");
     containerUsuario.classList.remove("hidden");
 
-    if (spanNomeCurto) spanNomeCurto.textContent = primeiroNome;
-    if (menuNomeCompleto) menuNomeCompleto.textContent = nomeCompleto || primeiroNome;
-    if (menuEmail) menuEmail.textContent = email;
-
-    if (inicialAvatar) {
-      inicialAvatar.textContent = inicial;
+    if (spanNomeCurto) spanNomeCurto.textContent = nomeCurto;
+    if (menuNomeCompleto) {
+      menuNomeCompleto.textContent = estadoAuth.adminUsername
+        ? nomeCompleto || "Administração RPM MODAS"
+        : nomeCompleto || nomeCurto;
     }
+    if (menuSubInfo) {
+      // Nunca exibe identificador técnico interno .local caso seja conta administrativa dedicada
+      menuSubInfo.textContent = estadoAuth.adminUsername
+        ? estadoAuth.adminUsername
+        : emailReal;
+    }
+
+    if (inicialAvatar) inicialAvatar.textContent = inicial;
 
     if (imgAvatar && avatarUrl) {
       imgAvatar.src = avatarUrl;
-      imgAvatar.alt = `Foto de ${primeiroNome}`;
+      imgAvatar.alt = `Foto de ${nomeCurto}`;
       imgAvatar.classList.remove("hidden");
       if (inicialAvatar) inicialAvatar.classList.add("hidden");
 
@@ -301,15 +319,14 @@
       if (inicialAvatar) inicialAvatar.classList.remove("hidden");
     }
 
-    if (badgeAdmin) {
-      badgeAdmin.classList.toggle("hidden", !estadoAuth.isAdmin);
-    }
+    if (badgeAdmin) badgeAdmin.classList.toggle("hidden", !estadoAuth.isAdmin);
+    if (btnIrPainel) btnIrPainel.classList.toggle("hidden", !estadoAuth.isAdmin);
 
     preencherNomeNosFormulariosSeVazio(nomeCompleto);
   }
 
   // ==========================================================================
-  // 5. COMPONENTE DO POP-UP DE LOGIN
+  // 5. POP-UP UNIFICADO DE LOGIN (GOOGLE + USUÁRIO/SENHA ADMIN)
   // ==========================================================================
   function exibirErroNoModal(mensagem) {
     const boxErro = document.getElementById("login-erro-box");
@@ -323,23 +340,45 @@
     boxErro.classList.remove("hidden");
   }
 
-  function definirEstadoCarregamentoGoogle(carregando) {
-    estadoAuth.iniciandoOAuth = carregando;
+  function definirEstadoProcessando(processando, origem = "google") {
+    estadoAuth.processandoAuth = processando;
+
     const btnGoogle = document.getElementById("btn-continuar-google");
     const iconeGoogle = document.getElementById("icone-oficial-google");
-    const spinner = document.getElementById("login-google-spinner");
-    const textoBtn = document.getElementById("texto-btn-google");
+    const spinnerGoogle = document.getElementById("login-google-spinner");
+    const textoGoogle = document.getElementById("texto-btn-google");
 
-    if (!btnGoogle) return;
+    const btnAdmin = document.getElementById("btn-submit-admin");
+    const spinnerAdmin = document.getElementById("login-admin-spinner");
+    const textoAdmin = document.getElementById("texto-btn-admin");
+    const inputUser = document.getElementById("input-admin-usuario");
+    const inputPass = document.getElementById("input-admin-senha");
 
-    btnGoogle.disabled = carregando;
-    btnGoogle.setAttribute("aria-busy", carregando ? "true" : "false");
-
-    if (iconeGoogle) iconeGoogle.classList.toggle("hidden", carregando);
-    if (spinner) spinner.classList.toggle("hidden", !carregando);
-    if (textoBtn) {
-      textoBtn.textContent = carregando ? "Conectando ao Google..." : "Continuar com Google";
+    if (btnGoogle) {
+      btnGoogle.disabled = processando;
+      btnGoogle.setAttribute("aria-busy", processando && origem === "google" ? "true" : "false");
     }
+    if (iconeGoogle) iconeGoogle.classList.toggle("hidden", processando && origem === "google");
+    if (spinnerGoogle) {
+      spinnerGoogle.classList.toggle("hidden", !(processando && origem === "google"));
+    }
+    if (textoGoogle) {
+      textoGoogle.textContent =
+        processando && origem === "google" ? "Conectando ao Google..." : "Continuar com Google";
+    }
+
+    if (btnAdmin) {
+      btnAdmin.disabled = processando;
+      btnAdmin.setAttribute("aria-busy", processando && origem === "admin" ? "true" : "false");
+    }
+    if (spinnerAdmin) {
+      spinnerAdmin.classList.toggle("hidden", !(processando && origem === "admin"));
+    }
+    if (textoAdmin) {
+      textoAdmin.textContent = processando && origem === "admin" ? "Verificando..." : "Entrar";
+    }
+    if (inputUser) inputUser.disabled = processando;
+    if (inputPass) inputPass.disabled = processando;
   }
 
   function abrirModalLogin(mensagemErroOpcional) {
@@ -347,16 +386,11 @@
     if (!modal) return;
 
     fecharMenuUsuario();
-    definirEstadoCarregamentoGoogle(false);
+    definirEstadoProcessando(false);
     exibirErroNoModal(mensagemErroOpcional || "");
 
     modal.classList.remove("hidden");
     document.body.style.overflow = "hidden";
-
-    const btnGoogle = document.getElementById("btn-continuar-google");
-    if (btnGoogle) {
-      setTimeout(() => btnGoogle.focus(), 40);
-    }
   }
 
   function fecharModalLogin() {
@@ -364,31 +398,46 @@
     if (!modal || modal.classList.contains("hidden")) return;
 
     modal.classList.add("hidden");
-    definirEstadoCarregamentoGoogle(false);
+    definirEstadoProcessando(false);
     exibirErroNoModal("");
 
-    // Libera a rolagem apenas se nenhum outro modal/sacola da loja estiver aberto
+    const inputSenha = document.getElementById("input-admin-senha");
+    if (inputSenha) {
+      inputSenha.value = "";
+      inputSenha.type = "password";
+    }
+    atualizarIconeMostrarSenha(false);
+
     const backdropLoja = document.getElementById("backdrop");
     if (!backdropLoja || backdropLoja.classList.contains("hidden")) {
       document.body.style.overflow = "";
     }
   }
 
+  function atualizarIconeMostrarSenha(visivel) {
+    const btnToggle = document.getElementById("btn-toggle-senha");
+    const iconeOlhoAberto = document.getElementById("icone-senha-mostrar");
+    const iconeOlhoFechado = document.getElementById("icone-senha-ocultar");
+    if (!btnToggle) return;
+    btnToggle.setAttribute("aria-label", visivel ? "Ocultar senha" : "Mostrar senha");
+    btnToggle.setAttribute("title", visivel ? "Ocultar senha" : "Mostrar senha");
+    if (iconeOlhoAberto) iconeOlhoAberto.classList.toggle("hidden", visivel);
+    if (iconeOlhoFechado) iconeOlhoFechado.classList.toggle("hidden", !visivel);
+  }
+
   // ==========================================================================
-  // 6. AUTENTICAÇÃO GOOGLE OAUTH E CONTROLE DE SESSÃO
+  // 6. FLUXOS DE LOGIN: GOOGLE (CLIENTES) E USUÁRIO/SENHA (ADMINISTRADOR)
   // ==========================================================================
   async function iniciarLoginComGoogle() {
-    if (estadoAuth.iniciandoOAuth) return; // Impede cliques repetidos
+    if (estadoAuth.processandoAuth) return;
 
     exibirErroNoModal("");
-    definirEstadoCarregamentoGoogle(true);
+    definirEstadoProcessando(true, "google");
 
     const supabase = window.getRpmSupabaseClient && window.getRpmSupabaseClient();
     if (!supabase) {
-      definirEstadoCarregamentoGoogle(false);
-      exibirErroNoModal(
-        "Não foi possível inicializar a conexão segura. Verifique sua internet e tente novamente."
-      );
+      definirEstadoProcessando(false);
+      exibirErroNoModal("Conexão indisponível no momento. Verifique sua internet.");
       return;
     }
 
@@ -401,39 +450,135 @@
       });
 
       if (error) {
-        definirEstadoCarregamentoGoogle(false);
+        definirEstadoProcessando(false);
         exibirErroNoModal(
           error.message || "Ocorreu um erro ao iniciar o login com Google. Tente novamente."
         );
       }
-    } catch (err) {
-      definirEstadoCarregamentoGoogle(false);
-      exibirErroNoModal(
-        "Falha de comunicação ao conectar com o Google. Verifique sua conexão e tente novamente."
+    } catch (_) {
+      definirEstadoProcessando(false);
+      exibirErroNoModal("Falha de comunicação ao iniciar login com o Google.");
+    }
+  }
+
+  async function iniciarLoginAdministrativo(e) {
+    if (e) e.preventDefault();
+    if (estadoAuth.processandoAuth) return;
+
+    const inputUsuario = document.getElementById("input-admin-usuario");
+    const inputSenha = document.getElementById("input-admin-senha");
+    const usuarioDigitado = String(inputUsuario ? inputUsuario.value : "").trim();
+    const senhaDigitada = String(inputSenha ? inputSenha.value : "");
+
+    if (!usuarioDigitado || !senhaDigitada) {
+      exibirErroNoModal("Informe o usuário e a senha para continuar.");
+      return;
+    }
+
+    // Clientes comuns entram exclusivamente com Google; usuário/senha é exclusivo para contas autorizadas em admin_users
+    const usernameNormalizado = usuarioDigitado.replace(/^@+/, "").trim().toLowerCase();
+    if (!usernameNormalizado || usernameNormalizado.includes(" ")) {
+      exibirErroNoModal("Usuário ou senha inválidos.");
+      return;
+    }
+
+    exibirErroNoModal("");
+    definirEstadoProcessando(true, "admin");
+
+    const supabase = window.getRpmSupabaseClient && window.getRpmSupabaseClient();
+    if (!supabase) {
+      definirEstadoProcessando(false);
+      exibirErroNoModal("Serviço de autenticação indisponível no momento.");
+      return;
+    }
+
+    try {
+      // 1. Resolve no banco o identificador técnico da conta administrativa sem expor dados no código
+      const { data: authIdentifier, error: errRpc } = await supabase.rpc(
+        "resolve_admin_login",
+        { p_username: usernameNormalizado }
       );
+
+      if (errRpc) {
+        definirEstadoProcessando(false);
+        if (errRpc.code === "PGRST202") {
+          exibirErroNoModal(
+            "A estrutura administrativa ainda não foi ativada no banco Supabase (execute o script supabase-setup.sql)."
+          );
+          return;
+        }
+        exibirErroNoModal("Não foi possível validar o usuário administrativo.");
+        return;
+      }
+
+      if (!authIdentifier) {
+        definirEstadoProcessando(false);
+        exibirErroNoModal("Usuário ou senha incorretos, ou conta sem permissão administrativa.");
+        return;
+      }
+
+      // 2. Autentica com segurança via Supabase Auth (hash bcrypt verificado no servidor)
+      const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
+        email: authIdentifier,
+        password: senhaDigitada
+      });
+
+      if (signInErr || !signInData || !signInData.session) {
+        definirEstadoProcessando(false);
+        const msgLower = String((signInErr && signInErr.message) || "").toLowerCase();
+        if (msgLower.includes("email logins are disabled")) {
+          exibirErroNoModal(
+            "Ative o provedor 'Email' em Authentication → Providers no painel do Supabase para liberar o login por senha do administrador."
+          );
+          return;
+        }
+        exibirErroNoModal("Usuário ou senha incorretos.");
+        return;
+      }
+
+      // 3. Confirma no banco via RLS/RPC que a conta autenticada realmente possui permissão administrativa
+      estadoAuth.usuario = signInData.user;
+      const confirmadoAdmin = await verificarPermissaoAdminBanco();
+
+      if (!confirmadoAdmin) {
+        await supabase.auth.signOut();
+        estadoAuth.usuario = null;
+        definirEstadoProcessando(false);
+        exibirErroNoModal("Acesso negado: esta conta não possui autorização administrativa.");
+        return;
+      }
+
+      if (inputSenha) inputSenha.value = "";
+      definirEstadoProcessando(false);
+      fecharModalLogin();
+      atualizarCabecalhoAutenticacao();
+      notificarLoja("Bem-vinda ao Painel Administrativo da RPM MODAS!");
+
+      // Encaminha automaticamente o administrador autenticado ao Painel Administrativo
+      window.dispatchEvent(new CustomEvent("rpm:abrir-painel-admin"));
+    } catch (_) {
+      definirEstadoProcessando(false);
+      exibirErroNoModal("Erro de conexão ao autenticar. Tente novamente.");
     }
   }
 
   async function sairDaConta() {
     const supabase = window.getRpmSupabaseClient && window.getRpmSupabaseClient();
     fecharMenuUsuario();
-
     if (!supabase) return;
 
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        notificarLoja("Não foi possível encerrar a sessão. Tente novamente.");
-        return;
-      }
+      await supabase.auth.signOut();
       estadoAuth.usuario = null;
       estadoAuth.perfil = null;
+      estadoAuth.adminUsername = null;
       estadoAuth.isAdmin = false;
       estadoAuth.ultimoUserIdSincronizado = null;
       atualizarCabecalhoAutenticacao();
+      window.dispatchEvent(new CustomEvent("rpm:usuario-deslogado"));
       notificarLoja("Você saiu da sua conta.");
     } catch (_) {
-      notificarLoja("Erro ao sair da conta. Tente novamente.");
+      notificarLoja("Erro ao encerrar a sessão.");
     }
   }
 
@@ -443,31 +588,39 @@
 
     if (!novoUsuario) {
       estadoAuth.perfil = null;
+      estadoAuth.adminUsername = null;
       estadoAuth.isAdmin = false;
       estadoAuth.ultimoUserIdSincronizado = null;
       atualizarCabecalhoAutenticacao();
+      window.dispatchEvent(new CustomEvent("rpm:auth-atualizado", { detail: { isAdmin: false } }));
       return;
     }
 
-    // Fecha o modal de login caso estivesse aberto e atualiza cabeçalho imediatamente
-    fecharModalLogin();
-    atualizarCabecalhoAutenticacao();
-
-    // Sincroniza perfil no banco e verifica permissão administrativa sem travar a navegação
     if (
       estadoAuth.ultimoUserIdSincronizado !== novoUsuario.id ||
       evento === "SIGNED_IN" ||
       evento === "USER_UPDATED"
     ) {
       estadoAuth.ultimoUserIdSincronizado = novoUsuario.id;
-      const [perfilBanco] = await Promise.all([
+      const [perfilBanco, ehAdmin] = await Promise.all([
         sincronizarPerfilCliente(novoUsuario),
         verificarPermissaoAdminBanco()
       ]);
 
-      if (perfilBanco) {
-        estadoAuth.perfil = perfilBanco;
+      if (perfilBanco) estadoAuth.perfil = perfilBanco;
+
+      fecharModalLogin();
+      atualizarCabecalhoAutenticacao();
+
+      window.dispatchEvent(
+        new CustomEvent("rpm:auth-atualizado", { detail: { isAdmin: ehAdmin } })
+      );
+
+      // Se uma conta Google autenticada também tiver autorização em admin_users e estiver na rota /admin, libera
+      if (ehAdmin && evento === "SIGNED_IN" && window.getRpmCurrentSubroute() === "/admin") {
+        window.dispatchEvent(new CustomEvent("rpm:abrir-painel-admin"));
       }
+    } else {
       atualizarCabecalhoAutenticacao();
     }
   }
@@ -477,29 +630,22 @@
     const btnFecharLogin = document.getElementById("btn-fechar-login");
     const modalLogin = document.getElementById("modal-login");
     const btnContinuarGoogle = document.getElementById("btn-continuar-google");
+    const formAdmin = document.getElementById("form-login-admin");
+    const btnToggleSenha = document.getElementById("btn-toggle-senha");
+    const inputSenha = document.getElementById("input-admin-senha");
     const btnUserTrigger = document.getElementById("btn-auth-user-trigger");
+    const btnAbrirAdminMenu = document.getElementById("btn-auth-abrir-admin");
     const btnLogout = document.getElementById("btn-auth-logout");
 
-    // 1. Abrir pop-up ao clicar em ENTRAR
-    if (btnEntrar) {
-      btnEntrar.addEventListener("click", () => abrirModalLogin());
-    }
+    if (btnEntrar) btnEntrar.addEventListener("click", () => abrirModalLogin());
+    if (btnFecharLogin) btnFecharLogin.addEventListener("click", fecharModalLogin);
 
-    // 2. Fechar pelo botão de fechar
-    if (btnFecharLogin) {
-      btnFecharLogin.addEventListener("click", fecharModalLogin);
-    }
-
-    // 3. Fechar ao clicar fora da janela (no overlay escuro/desfocado)
     if (modalLogin) {
       modalLogin.addEventListener("click", (e) => {
-        if (e.target === modalLogin) {
-          fecharModalLogin();
-        }
+        if (e.target === modalLogin) fecharModalLogin();
       });
     }
 
-    // 4. Fechar utilizando a tecla ESC (e fechar dropdown de usuário)
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         fecharModalLogin();
@@ -507,14 +653,32 @@
       }
     });
 
-    // 5. Iniciar login exclusivo com Google OAuth
     if (btnContinuarGoogle) {
       btnContinuarGoogle.addEventListener("click", iniciarLoginComGoogle);
     }
 
-    // 6. Menu do cliente autenticado e opção de sair
+    if (formAdmin) {
+      formAdmin.addEventListener("submit", iniciarLoginAdministrativo);
+    }
+
+    if (btnToggleSenha && inputSenha) {
+      btnToggleSenha.addEventListener("click", () => {
+        const mostrar = inputSenha.type === "password";
+        inputSenha.type = mostrar ? "text" : "password";
+        atualizarIconeMostrarSenha(mostrar);
+        inputSenha.focus();
+      });
+    }
+
     if (btnUserTrigger) {
       btnUserTrigger.addEventListener("click", alternarMenuUsuario);
+    }
+
+    if (btnAbrirAdminMenu) {
+      btnAbrirAdminMenu.addEventListener("click", () => {
+        fecharMenuUsuario();
+        window.dispatchEvent(new CustomEvent("rpm:abrir-painel-admin"));
+      });
     }
 
     if (btnLogout) {
@@ -540,7 +704,6 @@
       return;
     }
 
-    // Escuta mudanças automáticas no estado de autenticação (login, refresh, logout)
     supabase.auth.onAuthStateChange((evento, session) => {
       processarMudancaDeSessao(session, evento);
       if (evento === "SIGNED_IN") {
@@ -548,15 +711,11 @@
       }
     });
 
-    // Recupera sessão ativa ao abrir ou atualizar a página
     try {
-      const { data, error } = await supabase.auth.getSession();
-      if (error) {
-        console.warn("[RPM Auth] Aviso ao recuperar sessão:", error.message);
-      }
+      const { data } = await supabase.auth.getSession();
       await processarMudancaDeSessao(data ? data.session : null, "INITIAL_SESSION");
-    } catch (err) {
-      console.warn("[RPM Auth] Erro ao verificar sessão inicial:", err);
+    } catch (_) {
+      // Mantém visitante deslogado com segurança
     } finally {
       if (erroRetornoUrl) {
         limparParametrosOAuthDaUrl();
@@ -569,13 +728,13 @@
 
   document.addEventListener("DOMContentLoaded", inicializarSistemaAutenticacao);
 
-  // API pública segura e somente-leitura para integração futura com o Painel Administrativo
   window.RPMAuth = Object.freeze({
     hasOAuthCallbackInUrl: possuiCallbackOAuthNaUrl,
     openLoginModal: abrirModalLogin,
     closeLoginModal: fecharModalLogin,
     getUser: () => estadoAuth.usuario,
     getProfile: () => estadoAuth.perfil,
+    getAdminUsername: () => estadoAuth.adminUsername,
     isAdminVerified: () => Boolean(estadoAuth.isAdmin),
     recheckAdminPermission: verificarPermissaoAdminBanco,
     signOut: sairDaConta
