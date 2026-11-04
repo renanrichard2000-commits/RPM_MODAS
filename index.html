@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RPM MODAS | MODA FEMININA</title>
+  <meta name="description" content="RPM MODAS - Moda Feminina. Confira nossas roupas mais vendidas, promoções especiais, catálogo completo com filtros e atendimento pelo WhatsApp e Instagram." />
+  <script>
+    (function () {
+      var p = window.location.pathname || "/";
+      var baseHref = p === "/RPM_MODAS" || p.indexOf("/RPM_MODAS/") === 0 ? "/RPM_MODAS/" : "/";
+      var baseEl = document.createElement("base");
+      baseEl.href = baseHref;
+      document.head.appendChild(baseEl);
+
+      var params = new URLSearchParams(window.location.search || "");
+      var subrota = params.get("p");
+      if (subrota) {
+        var limpa = String(subrota).replace(/^\/+/, "");
+        params.delete("p");
+        var resto = params.toString();
+        var novaUrl = baseHref + limpa + (resto ? "?" + resto : "") + (window.location.hash || "");
+        window.history.replaceState(null, "", novaUrl);
+      }
+    })();
+  </script>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23231b16'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Georgia,serif' font-weight='bold' font-size='22' fill='%23f7f1e8'%3ERPM%3C/text%3E%3C/svg%3E" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- BARRA DE AVISOS NO TOPO -->
+  <div class="topbar" role="region" aria-label="Promoções da loja">
+    <div class="container topbar-inner" id="topbar-avisos">
+      <span>✨ Frete Grátis nas compras acima de R$ 299</span>
+      <span class="topbar-sep">•</span>
+      <span>💚 5% OFF imediato no PIX</span>
+      <span class="topbar-sep">•</span>
+      <span>📦 Enviamos para todo o Brasil</span>
+    </div>
+  </div>
+
+  <!-- CABEÇALHO PRINCIPAL COM SOMENTE AS 3 ABAS -->
+  <header class="site-header" id="topo">
+    <div class="container header-inner">
+      <button class="icon-btn mobile-menu-btn" id="btn-abrir-menu" aria-label="Abrir menu">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+
+      <!-- LOGO RPM MODAS / MODA FEMININA -->
+      <a href="#inicio" class="brand-logo" data-aba-link="inicio" aria-label="RPM MODAS - Ir para Início">
+        <span class="brand-name" id="header-nome-loja">RPM MODAS</span>
+        <span class="brand-sub" id="header-sub-loja">MODA FEMININA</span>
+      </a>
+
+      <!-- SOMENTE AS 3 ABAS SOLICITADAS -->
+      <nav class="desktop-nav" aria-label="Navegação principal">
+        <button type="button" class="tab-nav-btn active" data-aba-link="inicio" aria-current="page">Início</button>
+        <button type="button" class="tab-nav-btn" data-aba-link="catalogo">Catálogo</button>
+        <button type="button" class="tab-nav-btn" data-aba-link="contato">Contato</button>
+      </nav>
+
+      <!-- SACOLA DE COMPRAS E AUTENTICAÇÃO -->
+      <div class="header-actions">
+        <button type="button" class="bag-trigger" id="btn-abrir-sacola" aria-label="Abrir sacola de compras">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <path d="M16 10a4 4 0 0 1-8 0"></path>
+          </svg>
+          <span class="bag-label">Sacola</span>
+          <span class="badge" id="badge-sacola">0</span>
+        </button>
+
+        <!-- Botão ENTRAR (exibido quando não autenticado) -->
+        <button type="button" class="btn-header-entrar" id="btn-header-entrar" aria-haspopup="dialog" aria-controls="modal-login">
+          ENTRAR
+        </button>
+
+        <!-- Identificação do Cliente Conectado (exibida quando autenticado) -->
+        <div class="auth-user-container hidden" id="auth-user-container">
+          <button
+            type="button"
+            class="auth-user-trigger"
+            id="btn-auth-user-trigger"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            title="Minha conta"
+          >
+            <span class="auth-avatar-frame">
+              <img
+                id="auth-user-avatar"
+                class="auth-user-avatar hidden"
+                src=""
+                alt="Foto do perfil"
+                referrerpolicy="no-referrer"
+              />
+              <span id="auth-user-initial" class="auth-user-initial">R</span>
+            </span>
+            <span class="auth-user-short-name" id="auth-user-short-name">Cliente</span>
+            <svg class="auth-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+
+          <!-- Menu da conta com opção de sair (e acesso ao painel exclusivamente para admin) -->
+          <div class="auth-user-dropdown hidden" id="auth-user-dropdown" role="menu" aria-label="Menu da conta">
+            <div class="auth-dropdown-header">
+              <strong id="auth-menu-full-name">Cliente</strong>
+              <span id="auth-menu-email"></span>
+              <span class="auth-admin-badge hidden" id="auth-admin-badge">Conta Administradora</span>
+            </div>
+            <button type="button" class="auth-admin-panel-btn hidden" id="btn-auth-abrir-admin" role="menuitem">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+              </svg>
+              Painel Administrativo
+            </button>
+            <button type="button" class="auth-logout-btn" id="btn-auth-logout" role="menuitem">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
+              Sair da conta
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ======================================================================
+         ABA 1: INÍCIO (APRESENTAÇÃO + PESQUISA + MAIS VENDIDAS + PROMOÇÃO)
+         ====================================================================== -->
+    <section id="aba-inicio" class="tab-page active-page" aria-label="Página Inicial">
+      <!-- APRESENTAÇÃO DA LOJA -->
+      <div class="hero-section">
+        <div class="hero-media">
+          <img src="hero-colecao.jpg" alt="Coleção feminina RPM MODAS" class="hero-img" />
+          <div class="hero-gradient"></div>
+        </div>
+
+        <div class="container hero-content-wrap">
+          <div class="hero-card">
+            <span class="eyebrow" id="hero-tag">NOVA COLEÇÃO • ELEGÂNCIA &amp; CONFORTO</span>
+            <h1 id="hero-titulo">Estilo e sofisticação para valorizar cada momento seu</h1>
+            <p id="hero-descricao">
+              Bem-vinda à RPM MODAS! Confira nossas peças mais vendidas, aproveite as ofertas da semana e finalize seu pedido com praticidade direto pelo nosso WhatsApp.
+            </p>
+            <div class="hero-actions">
+              <button type="button" class="btn btn-primary" data-aba-link="catalogo">
+                Ver Catálogo Completo
+              </button>
+              <button type="button" class="btn btn-outline" data-aba-link="contato">
+                Nossos Contatos
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GUIA DE PESQUISA NA ABA DE INÍCIO -->
+      <div class="home-search-wrapper">
+        <div class="container">
+          <div class="home-search-card">
+            <div class="home-search-header">
+              <span class="search-kicker">BUSCA RÁPIDA</span>
+              <h2>Encontre sua peça ideal</h2>
+            </div>
+
+            <form class="home-search-form" id="form-pesquisa-inicio">
+              <div class="search-input-group">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input
+                  type="search"
+                  id="input-pesquisa-inicio"
+                  placeholder="Pesquise por vestido, conjunto, blazer, linho, cor..."
+                  autocomplete="off"
+                  aria-label="Pesquisar roupas no site"
+                />
+              </div>
+              <button type="submit" class="btn btn-primary">Buscar no Catálogo</button>
+            </form>
+
+            <!-- Sugestões rápidas de pesquisa -->
+            <div class="quick-tags-row">
+              <span class="quick-tags-label">Sugestões:</span>
+              <button type="button" class="quick-tag" data-atalho-cat="Vestidos">Vestidos</button>
+              <button type="button" class="quick-tag" data-atalho-cat="Conjuntos">Conjuntos</button>
+              <button type="button" class="quick-tag" data-atalho-cat="Alfaiataria">Alfaiataria</button>
+              <button type="button" class="quick-tag" data-atalho-cat="Blusas & Saias">Blusas &amp; Saias</button>
+              <button type="button" class="quick-tag quick-tag-sale" data-atalho-promo="true">🔥 Em Promoção</button>
+            </div>
+
+            <!-- Prévia instantânea enquanto digita na aba Início -->
+            <div class="home-live-results hidden" id="resultados-rapidos-inicio"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SEÇÃO: ROUPAS MAIS VENDIDAS -->
+      <div class="home-showcase-section">
+        <div class="container">
+          <div class="section-header">
+            <div>
+              <span class="eyebrow">AS QUERIDINHAS DAS CLIENTES</span>
+              <h2>Roupas Mais Vendidas</h2>
+            </div>
+            <button type="button" class="btn-link-arrow" data-aba-link="catalogo">
+              Ver todo o catálogo →
+            </button>
+          </div>
+
+          <div class="products-grid" id="grade-mais-vendidas">
+            <!-- Preenchido via JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- SEÇÃO: ROUPAS EM PROMOÇÃO -->
+      <div class="home-showcase-section promo-showcase-bg">
+        <div class="container">
+          <div class="section-header">
+            <div>
+              <span class="eyebrow eyebrow-sale">OFERTAS ESPECIAIS DA SEMANA</span>
+              <h2>Peças em Promoção</h2>
+            </div>
+            <button type="button" class="btn-link-arrow" id="btn-ver-todas-promos">
+              Filtrar promoções no catálogo →
+            </button>
+          </div>
+
+          <div class="products-grid" id="grade-promocoes">
+            <!-- Preenchido via JS -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         ABA 2: CATÁLOGO (GUIA DE PESQUISA + FILTROS + TODAS AS ROUPAS)
+         ====================================================================== -->
+    <section id="aba-catalogo" class="tab-page hidden" aria-label="Catálogo de Roupas">
+      <div class="page-hero-compact">
+        <div class="container">
+          <span class="eyebrow">COLEÇÃO COMPLETA RPM MODAS</span>
+          <h1>Catálogo de Roupas</h1>
+          <p>Use a guia de pesquisa e os filtros abaixo para encontrar rapidamente o modelo, tamanho e valor ideal.</p>
+        </div>
+      </div>
+
+      <div class="container catalog-page-body">
+        <!-- PAINEL DE PESQUISA E FILTROS DO CATÁLOGO -->
+        <div class="catalog-filter-panel">
+          <!-- Guia de Pesquisa Principal -->
+          <div class="catalog-search-row">
+            <div class="search-input-group catalog-search-box">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input
+                type="search"
+                id="input-pesquisa-catalogo"
+                placeholder="Pesquisar roupa por nome, cor, tecido ou estilo..."
+                autocomplete="off"
+                aria-label="Pesquisar roupas no catálogo"
+              />
+              <button type="button" class="clear-input-btn hidden" id="btn-limpar-texto-busca" aria-label="Limpar texto">✕</button>
+            </div>
+          </div>
+
+          <!-- Filtros de Categoria -->
+          <div class="filter-group-row">
+            <span class="filter-label">Categoria:</span>
+            <div class="category-pills" id="filtros-categoria">
+              <!-- Gerado via JS -->
+            </div>
+          </div>
+
+          <!-- Filtros Avançados: Tamanho, Faixa de Preço/Promoção e Ordenação -->
+          <div class="advanced-filters-grid">
+            <div class="filter-field">
+              <label for="filtro-tamanho">Tamanho disponível</label>
+              <select id="filtro-tamanho">
+                <option value="Todos">Todos os tamanhos</option>
+                <option value="PP">PP (36)</option>
+                <option value="P">P (38)</option>
+                <option value="M">M (40)</option>
+                <option value="G">G (42)</option>
+                <option value="GG">GG (44)</option>
+              </select>
+            </div>
+
+            <div class="filter-field">
+              <label for="filtro-preco">Preço &amp; Ofertas</label>
+              <select id="filtro-preco">
+                <option value="todos">Todos os valores</option>
+                <option value="promocao">🔥 Somente em Promoção</option>
+                <option value="ate-220">Até R$ 220,00</option>
+                <option value="220-330">De R$ 220,00 a R$ 330,00</option>
+                <option value="acima-330">Acima de R$ 330,00</option>
+              </select>
+            </div>
+
+            <div class="filter-field">
+              <label for="select-ordenacao">Ordenar por</label>
+              <select id="select-ordenacao">
+                <option value="destaques">Destaques</option>
+                <option value="mais-vendidas">Mais Vendidas</option>
+                <option value="menor-preco">Menor Preço</option>
+                <option value="maior-preco">Maior Preço</option>
+                <option value="maior-desconto">Maior Desconto</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Barra de status de resultados + botão limpar filtros -->
+          <div class="filter-status-bar">
+            <span id="contador-resultados-catalogo">Mostrando 8 peças</span>
+            <div class="filter-status-actions">
+              <button type="button" class="text-btn" id="btn-guia-medidas-catalogo">📏 Tabela de Medidas</button>
+              <button type="button" class="btn-reset-inline hidden" id="btn-limpar-filtros">✕ Limpar filtros</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- GRADE COMPLETA DE PRODUTOS DO CATÁLOGO -->
+        <div class="products-grid" id="grade-catalogo">
+          <!-- Cards gerados via JS -->
+        </div>
+
+        <!-- ESTADO VAZIO QUANDO NENHUMA ROUPA CORRESPONDE -->
+        <div class="empty-catalog hidden" id="catalogo-vazio">
+          <h3>Nenhuma roupa encontrada com esses filtros</h3>
+          <p>Tente pesquisar por outro termo ou clique abaixo para limpar os filtros e ver todas as peças.</p>
+          <button type="button" class="btn btn-primary" id="btn-resetar-vazio">Mostrar Todas as Roupas</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         ABA 3: CONTATO (WHATSAPP + INSTAGRAM + ATENDIMENTO DIRETO)
+         ====================================================================== -->
+    <section id="aba-contato" class="tab-page hidden" aria-label="Página de Contato">
+      <div class="page-hero-compact">
+        <div class="container">
+          <span class="eyebrow">ATENDIMENTO RPM MODAS</span>
+          <h1>Fale Conosco</h1>
+          <p>Entre em contato pelo nosso WhatsApp para dúvidas e pedidos, ou acompanhe nossas novidades diárias no Instagram!</p>
+        </div>
+      </div>
+
+      <div class="container contact-page-body">
+        <!-- CARDS PRINCIPAIS: WHATSAPP & INSTAGRAM -->
+        <div class="contact-cards-grid">
+          <!-- Card WhatsApp -->
+          <div class="contact-channel-card wa-card">
+            <div class="channel-icon wa-icon">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+              </svg>
+            </div>
+            <span class="channel-tag">ATENDIMENTO RÁPIDO E PEDIDOS</span>
+            <h2>WhatsApp Oficial</h2>
+            <p class="channel-highlight" id="contato-numero-wa">+55 (71) 99140-2776</p>
+            <p class="channel-desc">
+              Tire dúvidas sobre tamanhos, tecidos, formas de pagamento, frete ou feche seu pedido diretamente com nossa equipe.
+            </p>
+            <div class="channel-actions">
+              <a href="https://wa.me/5571991402776" target="_blank" rel="noopener" class="btn btn-whatsapp btn-block" id="link-card-whatsapp">
+                Chamar no WhatsApp Agora
+              </a>
+              <button type="button" class="btn btn-outline btn-block" id="btn-copiar-wa">
+                Copiar Número do WhatsApp
+              </button>
+            </div>
+          </div>
+
+          <!-- Card Instagram -->
+          <div class="contact-channel-card insta-card">
+            <div class="channel-icon insta-icon">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+                <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+                <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+              </svg>
+            </div>
+            <span class="channel-tag">PROVADORES, LOOKS E NOVIDADES</span>
+            <h2>Nosso Instagram</h2>
+            <p class="channel-highlight" id="contato-arroba-insta">@rpmmoda</p>
+            <p class="channel-desc">
+              Siga a <strong>RPM MODAS</strong> no Instagram para acompanhar lançamentos em primeira mão, vídeos no corpo e promoções relâmpago nos Stories!
+            </p>
+            <div class="channel-actions">
+              <a href="https://instagram.com/rpmmoda" target="_blank" rel="noopener" class="btn btn-insta btn-block" id="link-card-instagram">
+                Seguir no Instagram
+              </a>
+              <button type="button" class="btn btn-outline btn-block" id="btn-copiar-insta">
+                Copiar @ do Instagram
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- MENSAGEM DIRETA PARA O WHATSAPP + HORÁRIOS -->
+        <div class="contact-secondary-grid">
+          <div class="direct-message-box">
+            <h3>Envie uma mensagem rápida para nosso WhatsApp</h3>
+            <p>Preencha abaixo e já abriremos a conversa com seu atendimento iniciado:</p>
+
+            <form id="form-contato-rapido">
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label for="contato-nome">Seu nome *</label>
+                  <input type="text" id="contato-nome" placeholder="Digite seu nome" required />
+                </div>
+                <div class="form-group">
+                  <label for="contato-assunto">Assunto</label>
+                  <select id="contato-assunto">
+                    <option value="Dúvida sobre peça ou tamanho">Dúvida sobre peça ou tamanho</option>
+                    <option value="Consulta de frete / entrega">Consulta de frete / entrega</option>
+                    <option value="Formas de pagamento">Formas de pagamento</option>
+                    <option value="Trocas e devoluções">Trocas e devoluções</option>
+                    <option value="Outros assuntos">Outros assuntos</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="contato-texto">Sua mensagem *</label>
+                <textarea id="contato-texto" rows="3" placeholder="Olá! Gostaria de saber mais sobre..." required></textarea>
+              </div>
+
+              <button type="submit" class="btn btn-whatsapp">
+                Enviar Mensagem pelo WhatsApp
+              </button>
+            </form>
+          </div>
+
+          <div class="store-info-box">
+            <h3>Informações de Atendimento</h3>
+            <div class="info-item">
+              <strong>Horário de Funcionamento</strong>
+              <p id="contato-horario">Segunda a Sexta: 9h às 19h • Sábado: 9h às 15h</p>
+            </div>
+            <div class="info-item">
+              <strong>Envios &amp; Entregas</strong>
+              <p id="contato-cidade">Enviamos para todo o Brasil • Consulte entrega rápida na região</p>
+            </div>
+            <div class="info-item">
+              <strong>Formas de Pagamento</strong>
+              <p>PIX com 5% de desconto imediato ou Cartão de Crédito em até 3x sem juros via link seguro.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         PÁGINAS INSTITUCIONAIS PERSONALIZÁVEIS (/RPM_MODAS/pagina/<slug>)
+         ====================================================================== -->
+    <section id="aba-institucional" class="tab-page hidden" aria-label="Página Institucional">
+      <div class="container product-page-container" id="conteudo-pagina-institucional"></div>
+    </section>
+
+    <!-- ======================================================================
+         PÁGINA INDIVIDUAL DE CADA ROUPA (/RPM_MODAS/produto/<slug>)
+         ====================================================================== -->
+    <section id="aba-produto" class="tab-page hidden" aria-label="Detalhes do Produto">
+      <div class="container product-page-container" id="conteudo-pagina-produto">
+        <!-- Preenchido dinamicamente ao abrir um produto -->
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         PAINEL ADMINISTRATIVO EXCLUSIVO (renderizado somente após is_admin())
+         ====================================================================== -->
+    <section id="aba-admin" class="tab-page hidden" aria-label="Painel Administrativo"></section>
+  </main>
+
+  <!-- RODAPÉ ENXUTO COM AS 3 ABAS -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <span class="brand-name" id="footer-nome-loja">RPM MODAS</span>
+        <span class="footer-sub" id="footer-sub-loja">MODA FEMININA</span>
+      </div>
+
+      <div class="footer-tabs">
+        <button type="button" class="footer-tab-btn" data-aba-link="inicio">Início</button>
+        <button type="button" class="footer-tab-btn" data-aba-link="catalogo">Catálogo</button>
+        <button type="button" class="footer-tab-btn" data-aba-link="contato">Contato</button>
+      </div>
+
+      <div class="footer-social-quick">
+        <span id="footer-whatsapp">+55 (71) 99140-2776</span>
+        <span>•</span>
+        <a href="https://instagram.com/rpmmoda" target="_blank" rel="noopener" id="footer-instagram">@rpmmoda</a>
+      </div>
+    </div>
+
+    <div class="container footer-bottom">
+      <p>&copy; <span id="ano-atual">2026</span> <span id="copy-nome-loja">RPM MODAS</span> — <span id="copy-sub-loja">MODA FEMININA</span>. Todos os direitos reservados.</p>
+    </div>
+  </footer>
+
+  <!-- OVERLAY COMPARTILHADO -->
+  <div class="backdrop hidden" id="backdrop"></div>
+
+  <!-- MENU MOBILE COM SOMENTE AS 3 ABAS -->
+  <aside class="mobile-drawer hidden" id="menu-mobile" aria-label="Menu principal">
+    <div class="drawer-header">
+      <div class="brand-logo">
+        <span class="brand-name" id="mobile-nome-loja">RPM MODAS</span>
+        <span class="brand-sub" id="mobile-sub-loja">MODA FEMININA</span>
+      </div>
+      <button type="button" class="icon-btn" id="btn-fechar-menu" aria-label="Fechar menu">✕</button>
+    </div>
+    <nav class="mobile-nav-links">
+      <button type="button" class="mobile-tab-btn active" data-aba-link="inicio">Início</button>
+      <button type="button" class="mobile-tab-btn" data-aba-link="catalogo">Catálogo</button>
+      <button type="button" class="mobile-tab-btn" data-aba-link="contato">Contato</button>
+    </nav>
+  </aside>
+
+  <!-- DRAWER DA SACOLA DE COMPRAS -->
+  <aside class="cart-drawer hidden" id="sacola-drawer" aria-label="Sacola de compras">
+    <div class="drawer-header">
+      <div>
+        <h3>Sua Sacola</h3>
+        <span class="drawer-subtitle" id="sacola-contagem-texto">0 itens selecionados</span>
+      </div>
+      <button type="button" class="icon-btn" id="btn-fechar-sacola" aria-label="Fechar sacola">✕</button>
+    </div>
+
+    <div class="shipping-bar-wrap" id="barra-frete-container">
+      <p id="texto-progresso-frete">Faltam R$ 299,00 para ganhar <strong>Frete Grátis</strong></p>
+      <div class="shipping-track">
+        <div class="shipping-fill" id="preenchimento-frete" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <div class="cart-body" id="sacola-corpo">
+      <div class="cart-loading hidden" id="sacola-carregando" role="status" aria-live="polite">
+        <span class="login-spinner" aria-hidden="true"></span>
+        <p>Sincronizando os itens da sua conta...</p>
+      </div>
+
+      <div class="cart-empty" id="sacola-vazia">
+        <div class="cart-empty-icon">🛍️</div>
+        <h4>Sua sacola está vazia</h4>
+        <p>Explore nosso catálogo e escolha seus tamanhos favoritos para montar seu pedido.</p>
+        <button type="button" class="btn btn-primary" id="btn-explorar-da-sacola">Ir para o Catálogo</button>
+      </div>
+
+      <div id="sacola-conteudo-cheio" class="hidden">
+        <ul class="cart-items-list" id="lista-itens-sacola"></ul>
+
+        <div class="checkout-form-box" id="checkout-form-box">
+          <h4>Dados para enviar no WhatsApp</h4>
+
+          <div class="form-group">
+            <label for="cliente-nome">Seu nome *</label>
+            <input type="text" id="cliente-nome" placeholder="Como podemos te chamar?" required />
+          </div>
+
+          <div class="form-group">
+            <label for="cliente-entrega">Como prefere receber?</label>
+            <select id="cliente-entrega">
+              <option value="Entrega no endereço">Receber no meu endereço (Correios / Motoboy)</option>
+              <option value="Retirada / A combinar">Retirar ou combinar entrega</option>
+            </select>
+          </div>
+
+          <div class="form-group" id="grupo-endereco">
+            <label for="cliente-cep">CEP ou Bairro/Cidade</label>
+            <input type="text" id="cliente-cep" placeholder="Ex: 40000-000 ou seu bairro" />
+          </div>
+
+          <div class="form-group">
+            <label for="cliente-pagamento">Forma de pagamento preferida</label>
+            <select id="cliente-pagamento">
+              <option value="PIX">PIX (com 5% de desconto extra!)</option>
+              <option value="Cartão de Crédito">Cartão de Crédito (link de pagamento)</option>
+              <option value="A combinar">Definir no WhatsApp</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="cliente-obs">Observação (opcional)</label>
+            <input type="text" id="cliente-obs" placeholder="Ex: Embalar para presente" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cart-footer hidden" id="sacola-rodape">
+      <div class="summary-lines">
+        <div class="summary-row">
+          <span>Subtotal</span>
+          <span id="resumo-subtotal">R$ 0,00</span>
+        </div>
+        <div class="summary-row discount-row hidden" id="linha-desconto-pix">
+          <span>Desconto PIX (5%)</span>
+          <span id="valor-desconto-pix">- R$ 0,00</span>
+        </div>
+        <div class="summary-row">
+          <span>Frete</span>
+          <span id="resumo-frete">A combinar</span>
+        </div>
+        <div class="summary-row total-row">
+          <strong>Total estimado</strong>
+          <strong id="resumo-total">R$ 0,00</strong>
+        </div>
+      </div>
+
+      <button type="button" class="btn btn-whatsapp btn-block" id="btn-finalizar-whatsapp">
+        Finalizar Pedido no WhatsApp
+      </button>
+    </div>
+  </aside>
+
+  <!-- MODAL DETALHES DO PRODUTO -->
+  <div class="modal-wrap hidden" id="modal-produto" role="dialog" aria-modal="true" aria-labelledby="modal-prod-titulo">
+    <div class="modal-card modal-product-card">
+      <button type="button" class="modal-close" id="btn-fechar-modal-produto" aria-label="Fechar detalhes">✕</button>
+      <div class="modal-product-grid" id="conteudo-modal-produto"></div>
+    </div>
+  </div>
+
+  <!-- MODAL TABELA DE MEDIDAS -->
+  <div class="modal-wrap hidden" id="modal-medidas" role="dialog" aria-modal="true" aria-labelledby="titulo-medidas">
+    <div class="modal-card modal-measures-card">
+      <button type="button" class="modal-close" id="btn-fechar-medidas" aria-label="Fechar guia de medidas">✕</button>
+      <span class="eyebrow">CAIMENTO PERFEITO</span>
+      <h3 id="titulo-medidas">Guia de Medidas</h3>
+      <p class="measures-intro">Compare as medidas abaixo com as do seu corpo em centímetros:</p>
+
+      <div class="table-responsive">
+        <table class="measures-table">
+          <thead>
+            <tr>
+              <th>Tamanho</th>
+              <th>Manequim</th>
+              <th>Busto</th>
+              <th>Cintura</th>
+              <th>Quadril</th>
+            </tr>
+          </thead>
+          <tbody id="corpo-tabela-medidas"></tbody>
+        </table>
+      </div>
+
+      <div class="measures-tips">
+        <div><strong>Busto:</strong> contorne a parte mais cheia do busto.</div>
+        <div><strong>Cintura:</strong> meça cerca de 2 dedos acima do umbigo.</div>
+        <div><strong>Quadril:</strong> contorne a parte mais larga do quadril.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL CONFIRMAÇÃO / ENVIO WHATSAPP -->
+  <div class="modal-wrap hidden" id="modal-confirmacao" role="dialog" aria-modal="true" aria-labelledby="titulo-confirmacao">
+    <div class="modal-card modal-confirm-card">
+      <button type="button" class="modal-close" id="btn-fechar-confirmacao" aria-label="Fechar janela">✕</button>
+      <span class="eyebrow">PEDIDO PRONTO PARA ENVIO</span>
+      <h3 id="titulo-confirmacao">Seu pedido foi montado! ✨</h3>
+      <p class="confirm-desc">
+        Clique no botão verde abaixo para abrir o WhatsApp já com sua mensagem preenchida, ou copie o resumo:
+      </p>
+
+      <pre class="order-preview-box" id="previa-mensagem-wa"></pre>
+
+      <div class="confirm-actions">
+        <a href="#" target="_blank" rel="noopener" class="btn btn-whatsapp btn-block" id="link-direto-wa">
+          Abrir Conversa no WhatsApp
+        </a>
+        <button type="button" class="btn btn-outline btn-block" id="btn-copiar-pedido">
+          Copiar Texto do Pedido
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- POP-UP UNIFICADO DE LOGIN (CLIENTES COM GOOGLE + ADMIN COM USUÁRIO E SENHA) -->
+  <div
+    class="login-modal-overlay hidden"
+    id="modal-login"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="titulo-modal-login"
+    aria-describedby="desc-modal-login"
+  >
+    <div class="login-modal-card">
+      <button
+        type="button"
+        class="modal-close login-modal-close"
+        id="btn-fechar-login"
+        aria-label="Fechar janela de login"
+      >
+        ✕
+      </button>
+
+      <div class="login-brand-seal">
+        <span class="login-brand-title">RPM MODAS</span>
+        <span class="login-brand-sub">MODA FEMININA</span>
+      </div>
+
+      <h3 id="titulo-modal-login">Bem-vinda à RPM MODAS</h3>
+      <p class="login-modal-text" id="desc-modal-login">
+        Entre na sua conta para continuar.
+      </p>
+
+      <div class="login-aviso-box hidden" id="login-aviso-box" role="status"></div>
+      <div class="login-erro-box hidden" id="login-erro-box" role="alert"></div>
+
+      <!-- Botão 1: Clientes (Exclusivo Google OAuth) -->
+      <button type="button" class="btn-google-oauth" id="btn-continuar-google">
+        <svg
+          id="icone-oficial-google"
+          class="google-g-icon"
+          width="20"
+          height="20"
+          viewBox="0 0 48 48"
+          aria-hidden="true"
+        >
+          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+          <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+        </svg>
+        <span class="login-spinner hidden" id="login-google-spinner" aria-hidden="true"></span>
+        <span id="texto-btn-google">Continuar com Google</span>
+      </button>
+
+      <!-- Separador visual -->
+      <div class="login-divider" role="separator" aria-label="ou">
+        <span>OU</span>
+      </div>
+
+      <!-- Campos de Login Administrativo -->
+      <form class="login-admin-form" id="form-login-admin" novalidate>
+        <div class="login-field-group">
+          <label for="input-admin-usuario">Usuário</label>
+          <input
+            type="text"
+            id="input-admin-usuario"
+            name="username"
+            placeholder="Digite seu usuário"
+            autocomplete="username"
+            spellcheck="false"
+            required
+          />
+        </div>
+
+        <div class="login-field-group">
+          <label for="input-admin-senha">Senha</label>
+          <div class="password-input-wrap">
+            <input
+              type="password"
+              id="input-admin-senha"
+              name="password"
+              placeholder="Digite sua senha"
+              autocomplete="current-password"
+              required
+            />
+            <button
+              type="button"
+              class="password-toggle-btn"
+              id="btn-toggle-senha"
+              aria-label="Mostrar senha"
+              title="Mostrar senha"
+            >
+              <!-- Ícone olho aberto (mostrar) -->
+              <svg id="icone-senha-mostrar" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              <!-- Ícone olho cortado (ocultar) -->
+              <svg id="icone-senha-ocultar" class="hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-login-entrar" id="btn-submit-admin">
+          <span class="login-spinner login-spinner-light hidden" id="login-admin-spinner" aria-hidden="true"></span>
+          <span id="texto-btn-admin">Entrar</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+
+  <!-- BIBLIOTECA SUPABASE + CATÁLOGO DINÂMICO, CMS VISUAL, AUTENTICAÇÃO, PAINEL ADMIN E LOJA -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+  <script src="dados-loja.js"></script>
+  <script src="catalog-service.js"></script>
+  <script src="cms-service.js"></script>
+  <script src="auth.js"></script>
+  <script src="cms-editor.js"></script>
+  <script src="admin.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
